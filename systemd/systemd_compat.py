@@ -212,6 +212,29 @@ def is_user_unit(unit: str) -> bool:
     return any(resolved.parent == directory for directory in USER_UNIT_DIRS)
 
 
+def enablement_dirs(unit: str) -> list[Path]:
+    """Unit search directories of the manager that owns this unit.
+
+    `systemctl enable` expresses enablement as <target>.wants/<unit> symlinks
+    *inside the manager's own unit search path*: /etc/systemd/system for the
+    system manager and the per-user directories for the user manager.  The two
+    must not be mixed; a user unit enabled under /etc/systemd/system is both
+    unwritable for the account and invisible to its manager.
+    """
+    if is_user_unit(unit):
+        return list(USER_UNIT_DIRS)
+    return list(SYSTEM_UNIT_DIRS)
+
+
+def enablement_write_dir(unit: str) -> Path:
+    """Directory `systemctl enable` writes new symlinks to for this unit."""
+    if is_user_unit(unit):
+        # /etc/systemd/user belongs to the administrator; the user manager's
+        # own configuration lives in the account's home.
+        return DESKTOP_HOME / ".config/systemd/user"
+    return Path("/etc/systemd/system")
+
+
 def is_masked(unit: str) -> bool:
     path = unit_path(unit)
     if path is None or not path.is_symlink():
@@ -464,7 +487,7 @@ def unit_enabled_state(unit: str) -> str:
     if not wanted and not parser.get("Install", "Alias", fallback="").strip():
         return "static"
     for target in wanted:
-        for base in (Path("/etc/systemd/system"), Path("/run/systemd/system")):
+        for base in enablement_dirs(unit):
             for sub in ("wants", "requires"):
                 link = base / f"{target}.{sub}" / unit
                 if os.path.lexists(link):
@@ -938,11 +961,25 @@ def enable_unit(unit: str) -> tuple[bool, str]:
         return True, "static"
     for target in wanted:
         sub = "requires" if target in parser.get("Install", "RequiredBy", fallback="").split() else "wants"
-        target_dir = Path("/etc/systemd/system") / f"{target}.{sub}"
-        target_dir.mkdir(parents=True, exist_ok=True)
+        target_dir = enablement_write_dir(unit) / f"{target}.{sub}"
+        try:
+            target_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            return False, f"Could not create {target_dir}: {exc}"
+        if is_user_unit(unit) and os.geteuid() == 0:
+            # A root caller (the D-Bus facade) must leave the account's own
+            # manager tree owned by that account.
+            for owned in (target_dir, target_dir.parent):
+                try:
+                    shutil.chown(owned, DESKTOP_USER, DESKTOP_USER)
+                except OSError:
+                    pass
         link = target_dir / unit
         if not os.path.lexists(link):
-            link.symlink_to(path)
+            try:
+                link.symlink_to(path)
+            except OSError as exc:
+                return False, f"Could not enable {unit}: {exc}"
     if unit not in CORE_UNITS:
         ok, message = ensure_dynamic_program(unit, autostart=True, apply=False)
         if not ok:
@@ -955,7 +992,7 @@ def disable_unit(unit: str) -> tuple[bool, str]:
     path = unit_path(unit)
     if path is None:
         return False, f"Unit {unit} not found."
-    for base in (Path("/etc/systemd/system"), Path("/run/systemd/system")):
+    for base in enablement_dirs(unit):
         for target_dir in base.glob("*.wants"):
             link = target_dir / unit
             if os.path.lexists(link):
