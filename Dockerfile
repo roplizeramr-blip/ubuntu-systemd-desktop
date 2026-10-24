@@ -279,7 +279,10 @@ RUN cp /opt/desktop/applications/*.desktop /home/desktop/Desktop/ \
     && mkdir -p /etc/supervisor/conf.d \
     && chown root:desktop /etc/supervisor/conf.d \
     && chmod 0775 /etc/supervisor/conf.d \
-    && chown -R desktop:desktop /home/desktop /opt/desktop \
+    && chown desktop:desktop /home/desktop \
+    && find /home/desktop -mindepth 1 -maxdepth 1 ! -name .openclaw \
+        -exec chown -R desktop:desktop {} + \
+    && chown -R desktop:desktop /opt/desktop \
     && install -d -m 0755 /var/log/supervisor /var/log/journal \
     && install -d -m 0700 /var/swap \
     && install -d -m 0700 /var/lib/tailscale \
