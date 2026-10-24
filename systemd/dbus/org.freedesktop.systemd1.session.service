@@ -1,0 +1,3 @@
+[D-BUS Service]
+Name=org.freedesktop.systemd1
+Exec=/usr/bin/python3 /opt/systemd-compat/systemd_dbus.py --address unix:path=/run/user/1000/bus

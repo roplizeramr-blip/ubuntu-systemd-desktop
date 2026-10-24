@@ -775,31 +775,65 @@ class Job(dbus.service.Object):
         self.state = "canceled"
 
 
+def target_address(argv: list[str]) -> str | None:
+    """Return the bus address requested with --address/--address= (or None)."""
+    for index, argument in enumerate(argv):
+        if argument.startswith("--address="):
+            return argument.split("=", 1)[1]
+        if argument == "--address" and index + 1 < len(argv):
+            return argv[index + 1]
+    return None
+
+
 def main() -> int:
+    address = target_address(sys.argv[1:])
+    if address:
+        # dbus-python can only open the "system" or the "session" bus, so point
+        # the system bus at the requested address.  This is how a second
+        # instance serves the desktop user's session bus, where
+        # org.freedesktop.systemd1 is what "systemctl --user" and
+        # "busctl --user" look for.  (The session bus only accepts connections
+        # from the user that owns it, so this instance runs as that user.)
+        os.environ["DBUS_SYSTEM_BUS_ADDRESS"] = address
     DBusGMainLoop(set_as_default=True)
     bus = None
     last_error: Exception | None = None
-    for _ in range(120):
+    deadline = time.monotonic() + 120.0
+    while bus is None and time.monotonic() < deadline:
         try:
             bus = dbus.SystemBus()
-            break
         except dbus.exceptions.DBusException as exc:
             last_error = exc
             time.sleep(0.5)
     if bus is None:
-        print(f"systemd-dbus: cannot connect to system bus: {last_error}", file=sys.stderr)
-        return 1
-
-    try:
-        bus_name = dbus.service.BusName(SYSTEMD1, bus, do_not_queue=True)
-    except dbus.exceptions.DBusException as exc:
-        print(f"systemd-dbus: cannot own {SYSTEMD1}: {exc}", file=sys.stderr)
+        print(f"systemd-dbus: cannot connect to the bus: {last_error}", file=sys.stderr)
         return 1
 
     manager = Manager(bus, MANAGER_PATH)
-    manager.bus_name = bus_name
     # Keep a strong reference on the manager so the bus name is not released.
     manager._connection = bus
+    manager.bus_name = None
+
+    def acquire_name() -> bool:
+        """Own SYSTEMD1, retrying while another instance still holds it."""
+        if manager.bus_name is not None:
+            return False
+        try:
+            manager.bus_name = dbus.service.BusName(SYSTEMD1, bus, do_not_queue=True)
+        except dbus.exceptions.DBusException:
+            return True
+        return False
+
+    if acquire_name():
+        # Another instance (started by D-Bus activation) owns the name.  Stay
+        # alive instead of exiting: a crash loop would leave the name unowned
+        # whenever that instance stops.  Take over if it ever disappears.
+        print(
+            f"systemd-dbus: {SYSTEMD1} is already owned on this bus; retrying",
+            file=sys.stderr,
+        )
+        GLib.timeout_add_seconds(5, acquire_name)
+
     loop = GLib.MainLoop()
     try:
         loop.run()
