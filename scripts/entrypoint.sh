@@ -5,7 +5,7 @@ export VNC_PW="${VNC_PW:-}"
 export VNC_USER="${VNC_USER:-admin}"
 export VNC_AUTH="${VNC_AUTH:-1}"
 export VNC_RESOLUTION="${VNC_RESOLUTION:-1440x900}"
-export VNC_FRAME_RATE="${VNC_FRAME_RATE:-60}"
+export VNC_FRAME_RATE="${VNC_FRAME_RATE:-30}"
 export KASM_PORT="${KASM_PORT:-6080}"
 export KASM_DISPLAY="${KASM_DISPLAY:-1}"
 export CONTROL_PORT="${CONTROL_PORT:-${PORT:-3000}}"
@@ -120,7 +120,7 @@ case "$VNC_USER" in
         ;;
 esac
 case "$VNC_FRAME_RATE" in
-    ''|*[!0-9]*) VNC_FRAME_RATE=60 ;;
+    ''|*[!0-9]*) VNC_FRAME_RATE=30 ;;
 esac
 
 # KasmVNC's built-in default (1024x768) is merged after the command line, so
@@ -149,6 +149,20 @@ desktop:
   pixel_depth: 24
 encoding:
   max_frame_rate: ${VNC_FRAME_RATE}
+  # Software encoding on a small, shared CPU: let the encoder trade image
+  # quality for responsiveness instead of falling behind, never take the
+  # expensive lossless rectangle path, and spend less time on each WebP frame.
+  rect_encoding_mode:
+    min_quality: 4
+    max_quality: 8
+    consider_lossless_quality: 10
+  video_encoding_mode:
+    webp_encoding_time: 10
+    enter_video_encoding_mode:
+      time_threshold: 3
+      area_threshold: 40%
+  compare_framebuffer: auto
+  hextile_improved_compression: true
 network:
   protocol: http
   interface: 127.0.0.1

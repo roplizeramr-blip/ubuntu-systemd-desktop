@@ -160,13 +160,13 @@ Name=Google Chrome
 Name[ar]=جوجل كروم
 Comment=Web Browser
 Comment[ar]=متصفح الويب
-Exec=google-chrome --new-window file:///opt/desktop/welcome.html
+Exec=google-chrome --disable-dev-shm-usage --disable-gpu --renderer-process-limit=3 --disable-background-networking --new-window file:///opt/desktop/welcome.html
 X-GNOME-Autostart-enabled=true
 OnlyShowIn=XFCE;
 EOF
     chown desktop:desktop "$HOME/.config/autostart/google-chrome.desktop" 2>/dev/null || true
     if ! pgrep -u "${USER:-desktop}" -x chrome >/dev/null 2>&1; then
-        (sleep 1; setsid google-chrome --new-window file:///opt/desktop/welcome.html >/dev/null 2>&1 &) &
+        (sleep 1; setsid google-chrome --disable-dev-shm-usage --disable-gpu --renderer-process-limit=3 --disable-background-networking --new-window file:///opt/desktop/welcome.html >/dev/null 2>&1 &) &
     fi
 else
     rm -f "$HOME/.config/autostart/google-chrome.desktop"
