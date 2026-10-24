@@ -473,7 +473,13 @@ def unit_enabled_state(unit: str) -> str:
 
 
 def list_all_units() -> list[str]:
-    units: set[str] = set(CORE_UNITS) | set(TARGET_UNITS)
+    # Only report core units that resolve in the active scope: the per-user
+    # manager must not list the appliance's system units (and vice versa), or
+    # callers that resolve every listed unit fail.
+    units: set[str] = set(TARGET_UNITS)
+    for unit in CORE_UNITS:
+        if unit_path(unit) is not None:
+            units.add(unit)
     for base in UNIT_DIRS:
         if not base.is_dir():
             continue
