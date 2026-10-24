@@ -175,9 +175,10 @@ RUN set -eux; \
 # runtime ("this CLI cannot verify the current runtime pin and service
 # definition").  Run the shipped installer for the desktop user at build time:
 # it fetches its own private Node runtime and installs the CLI under
-# /home/desktop/.openclaw, which is where the app looks for it.  npm has a
-# known ENOTEMPTY flake on first install; the retry loop makes the build
-# deterministic.
+# /home/desktop/.openclaw, which is where the app looks for it.  --runtime-only
+# matches what the app itself does; it wires up the Gateway service later, once
+# the systemd user session exists.  npm has a known ENOTEMPTY flake on first
+# install; the retry loop makes the build deterministic.
 ARG OPENCLAW_CLI_VERSION=2026.10.7
 RUN if [ "$INSTALL_OPENCLAW" = "1" ]; then \
         set -eux; \
@@ -187,6 +188,7 @@ RUN if [ "$INSTALL_OPENCLAW" = "1" ]; then \
                 bash /usr/lib/OpenClaw/install-cli.sh \
                     --prefix /home/desktop/.openclaw \
                     --version "${OPENCLAW_CLI_VERSION}" \
+                    --runtime-only \
                     --no-onboard; then \
                 break; \
             fi; \
