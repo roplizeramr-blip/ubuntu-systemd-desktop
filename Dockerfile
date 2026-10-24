@@ -74,10 +74,10 @@ RUN install -d -m 0755 /etc/apt/keyrings \
     && rm -rf /var/lib/apt/lists/*
 
 # Node.js from the official tarball, pinned and verified by SHA-256.  It is
-# unpacked into /usr/local, so node/npm/npx are the newest release and never
+# unpacked into /usr/local, so node/npm/npx are the current LTS and never
 # collide with anything Ubuntu ships.
-ARG NODE_VERSION=26.12.1
-ARG NODE_SHA256=6170b2d474e1c626f43cff3adc118df9fe3b573258a4fc3d850c8dbc6b079bbd
+ARG NODE_VERSION=24.22.1
+ARG NODE_SHA256=6c172a9ab6718f7b801fb5a7bd486af2ee5e32758086a04b84fcce2aa77095e6
 RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" \
         -o /opt/node.tar.xz \
     && echo "${NODE_SHA256}  /opt/node.tar.xz" | sha256sum -c - \

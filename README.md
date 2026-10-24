@@ -37,7 +37,7 @@ Linux system, while Supervisor remains the real process manager.
   checksum-pinned (`--build-arg INSTALL_OPENCLAW=0` skips it), with
   `gnome-keyring` for libsecret and a small `logind` facade so sleep-inhibitor
   calls succeed.
-- Node.js `26.12.1` from the official tarball and Python `3.15` from the
+- Node.js `24.22.1` (LTS) from the official tarball and Python `3.15` from the
   deadsnakes PPA, both installed next to the system packages.
 - Tailscale in userspace networking mode by default (no `/dev/net/tun` or
   `NET_ADMIN` required); `TS_TUN=kernel` is opt-in.
