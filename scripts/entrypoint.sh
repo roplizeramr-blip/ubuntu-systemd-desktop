@@ -123,6 +123,16 @@ case "$VNC_FRAME_RATE" in
     ''|*[!0-9]*) VNC_FRAME_RATE=60 ;;
 esac
 
+# KasmVNC's built-in default (1024x768) is merged after the command line, so
+# the requested geometry has to live in the config file to win.  Accept only
+# WxH; anything else falls back to 1440x900.
+case "$VNC_RESOLUTION" in
+    [0-9]*x[0-9]*) VNC_WIDTH="${VNC_RESOLUTION%x*}"; VNC_HEIGHT="${VNC_RESOLUTION#*x}" ;;
+    *) VNC_WIDTH=1440; VNC_HEIGHT=900 ;;
+esac
+case "$VNC_WIDTH" in ''|*[!0-9]*) VNC_WIDTH=1440 ;; esac
+case "$VNC_HEIGHT" in ''|*[!0-9]*) VNC_HEIGHT=900 ;; esac
+
 # Ensure the KasmVNC web server can read the snakeoil certificate/key installed
 # by ssl-cert.  The image adds the user to this group; repeat it at runtime for
 # volumes or user-created images.
@@ -132,6 +142,9 @@ fi
 
 cat > /home/desktop/.vnc/kasmvnc.yaml <<EOF
 desktop:
+  resolution:
+    width: $VNC_WIDTH
+    height: $VNC_HEIGHT
   allow_resize: true
   pixel_depth: 24
 encoding:
