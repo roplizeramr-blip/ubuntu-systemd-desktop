@@ -8,6 +8,7 @@ replacement for the systemd PID 1.
 from __future__ import annotations
 
 import os
+import platform
 import sys
 import time
 from pathlib import Path
@@ -81,6 +82,7 @@ def parse_argv(argv: list[str]) -> tuple[str, list[str], dict[str, object]]:
         "signal": "SIGTERM",
         "kill_whom": "all",
         "wait": False,
+        "user": False,
     }
     positionals: list[str] = []
     value_options = {
@@ -120,6 +122,7 @@ def parse_argv(argv: list[str]) -> tuple[str, list[str], dict[str, object]]:
         "--failed": "failed",
         "--plain": "plain",
         "--wait": "wait",
+        "--user": "user",
         "--system": None,
         "--no-block": None,
         "--no-wall": None,
@@ -500,9 +503,79 @@ def cmd_enable_disable(units: list[str], action: str, opts: dict[str, object]) -
     return result
 
 
+def manager_properties() -> dict[str, object]:
+    """The manager properties `systemctl show` reports when no unit is given.
+
+    `systemctl show` without a unit argument inspects the *manager*, not a unit.
+    Tools rely on this to discover the unit load path (UnitPath), so the value
+    must be the manager property set rather than a target's.
+    """
+    machine = platform.machine() or "x86_64"
+    architecture = {"x86_64": "x86-64", "amd64": "x86-64"}.get(machine, machine)
+    hostname_file = Path("/etc/hostname")
+    hostname = platform.node()
+    if hostname_file.exists():
+        hostname = sc.read_text(hostname_file).strip() or hostname
+    return {
+        "Version": sc.SYSTEMD_VERSION,
+        "Architecture": architecture,
+        "NFailedUnits": sc.count_failed_units(),
+        "NJobs": 0,
+        "NInstalledJobs": 0,
+        "NNames": len(sc.list_all_units()),
+        "UnitPath": [str(path) for path in sc.UNIT_DIRS],
+        "Virtualization": os.environ.get("SYSTEMD_DETECT_VIRT", "none"),
+        "SystemState": sc.system_state(),
+        "Tainted": "",
+        "DefaultStandardOutput": "journal",
+        "DefaultStandardError": "inherit",
+        "LogLevel": "info",
+        "LogTarget": "journal",
+        "Hostname": hostname,
+        "StaticHostname": hostname,
+        "KernelRelease": platform.release(),
+        "KernelVersion": platform.version(),
+        "DefaultTimeoutStartUSec": 90_000_000,
+        "DefaultTimeoutStopUSec": 90_000_000,
+        "DefaultRestartUSec": 100_000,
+        "DefaultStartLimitIntervalUSec": 10_000_000,
+        "DefaultStartLimitBurst": 5,
+        "TimerSlackNSec": 50_000,
+        "DefaultOOMPolicy": "stop",
+    }
+
+
+def select_properties(
+    props: dict[str, object], opts: dict[str, object]
+) -> dict[str, object]:
+    prop_filter = opts.get("property")
+    if prop_filter and str(prop_filter) not in ("All", "all"):
+        names = [name.strip() for name in str(prop_filter).split(",") if name.strip()]
+        return {name: props.get(name, "") for name in names}
+    return props
+
+
+def emit_properties(props: dict[str, object], opts: dict[str, object]) -> None:
+    for key in sorted(props):
+        value = props[key]
+        if isinstance(value, list):
+            text = " ".join(str(item) for item in value)
+        elif key == "ActiveEnterTimestamp" and value:
+            text = format_timestamp(int(value))
+        elif isinstance(value, bool):
+            text = "yes" if value else "no"
+        else:
+            text = str(value)
+        if opts.get("value"):
+            out(text)
+        else:
+            out(f"{key}={text}")
+
+
 def cmd_show(units: list[str], opts: dict[str, object]) -> int:
     if not units:
-        units = ["graphical.target"]
+        emit_properties(select_properties(manager_properties(), opts), opts)
+        return 0
     result = 0
     for index, unit in enumerate(units):
         unit = sc.normalize_unit(unit)
@@ -511,27 +584,10 @@ def cmd_show(units: list[str], opts: dict[str, object]) -> int:
             result = 1
             continue
         props = sc.get_properties(unit)
-        selected = props
-        prop_filter = opts.get("property")
-        if prop_filter and str(prop_filter) not in ("All", "all"):
-            names = [name.strip() for name in str(prop_filter).split(",") if name.strip()]
-            selected = {name: props.get(name, "") for name in names}
+        selected = select_properties(props, opts)
         if index and not opts.get("value"):
             out("")
-        for key in sorted(selected):
-            value = selected[key]
-            if isinstance(value, list):
-                text = " ".join(str(item) for item in value)
-            elif key == "ActiveEnterTimestamp" and value:
-                text = format_timestamp(int(value))
-            elif isinstance(value, bool):
-                text = "yes" if value else "no"
-            else:
-                text = str(value)
-            if opts.get("value"):
-                out(text)
-            else:
-                out(f"{key}={text}")
+        emit_properties(selected, opts)
     return result
 
 
@@ -624,6 +680,10 @@ def main(argv: list[str]) -> int:
         out(HELP)
         return 0
     command, units, opts = parse_argv(argv)
+    # A plain invocation talks to the system manager; "--user" selects the
+    # per-user manager.  Keep their unit search paths separate, like real
+    # systemd, so a user unit never looks like a system unit (and vice versa).
+    sc.set_scope("user" if opts.get("user") else "system")
     if command in ("--version", "version"):
         out(sc.systemd_version_string())
         return 0

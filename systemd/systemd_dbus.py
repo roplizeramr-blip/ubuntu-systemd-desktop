@@ -795,6 +795,11 @@ def main() -> int:
         # "busctl --user" look for.  (The session bus only accepts connections
         # from the user that owns it, so this instance runs as that user.)
         os.environ["DBUS_SYSTEM_BUS_ADDRESS"] = address
+        # Real systemd keeps the system and per-user unit search paths separate,
+        # so this instance must not describe system units as the user manager's.
+        sc.set_scope("user")
+    else:
+        sc.set_scope("system")
     DBusGMainLoop(set_as_default=True)
     bus = None
     last_error: Exception | None = None

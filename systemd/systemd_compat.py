@@ -48,6 +48,25 @@ USER_UNIT_DIRS = [
     DESKTOP_HOME / ".config/systemd/user",
 ]
 UNIT_DIRS = SYSTEM_UNIT_DIRS + USER_UNIT_DIRS
+
+# This compatibility layer fronts both the real system manager and the
+# per-user manager.  Real systemd keeps their unit search paths separate: a
+# system query must never resolve a user unit, and a user query must never
+# resolve a system unit.  A caller selects a scope before doing lookups.
+_ALL_UNIT_DIRS = list(UNIT_DIRS)
+
+
+def set_scope(scope: str) -> None:
+    """Restrict unit lookups to one manager scope: "system", "user" or "all"."""
+    global UNIT_DIRS
+    if scope == "system":
+        UNIT_DIRS = list(SYSTEM_UNIT_DIRS)
+    elif scope == "user":
+        UNIT_DIRS = list(USER_UNIT_DIRS)
+    else:
+        UNIT_DIRS = list(_ALL_UNIT_DIRS)
+
+
 SUPERVISOR_CONF_DIR = Path("/etc/supervisor/conf.d")
 SUPERVISORCTL = shutil.which("supervisorctl") or "/usr/bin/supervisorctl"
 SUPERVISOR_SOCK = "unix:///run/supervisor.sock"
