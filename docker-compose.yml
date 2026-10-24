@@ -16,7 +16,7 @@ services:
       CONTROL_PORT: "${CONTROL_PORT:-3000}"
       VNC_RESOLUTION: "${VNC_RESOLUTION:-1440x900}"
       VNC_PW: "${VNC_PW:?Set VNC_PW in .env or the shell}"
-      VNC_USER: "${VNC_USER:-desktop}"
+      VNC_USER: "${VNC_USER:-admin}"
       VNC_AUTH: "${VNC_AUTH:-1}"
       VNC_FRAME_RATE: "${VNC_FRAME_RATE:-60}"
       DESKTOP_PW: "${DESKTOP_PW:-}"
