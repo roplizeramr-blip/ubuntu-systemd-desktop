@@ -170,6 +170,33 @@ RUN set -eux; \
     install -d -m 0755 -o desktop -g desktop /home/desktop/.cache; \
     install -d -m 0700 -o desktop -g desktop /home/desktop/.vnc
 
+# The desktop package ships a CLI installer but nothing ever runs it, so the
+# app started with "OpenClaw CLI not found" and refused to arm its bundled
+# runtime ("this CLI cannot verify the current runtime pin and service
+# definition").  Run the shipped installer for the desktop user at build time:
+# it fetches its own private Node runtime and installs the CLI under
+# /home/desktop/.openclaw, which is where the app looks for it.  npm has a
+# known ENOTEMPTY flake on first install; the retry loop makes the build
+# deterministic.
+ARG OPENCLAW_CLI_VERSION=2026.10.7
+RUN if [ "$INSTALL_OPENCLAW" = "1" ]; then \
+        set -eux; \
+        install -d -m 0755 -o desktop -g desktop /home/desktop/.openclaw; \
+        for attempt in 1 2 3; do \
+            if runuser -u desktop -- env HOME=/home/desktop \
+                bash /usr/lib/OpenClaw/install-cli.sh \
+                    --prefix /home/desktop/.openclaw \
+                    --version "${OPENCLAW_CLI_VERSION}" \
+                    --no-onboard; then \
+                break; \
+            fi; \
+            rm -rf /home/desktop/.openclaw /home/desktop/.npm; \
+            install -d -m 0755 -o desktop -g desktop /home/desktop/.openclaw; \
+        done; \
+        test -x /home/desktop/.openclaw/bin/openclaw; \
+        rm -rf /home/desktop/.npm; \
+    fi
+
 # Compatibility layer, units, D-Bus facade and desktop assets.
 RUN install -d -m 0755 /opt/systemd-compat /usr/share/backgrounds \
         /usr/share/applications /etc/supervisor/conf.d

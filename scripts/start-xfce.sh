@@ -25,7 +25,11 @@ mkdir -p "$XDG_RUNTIME_DIR"
 chmod 0700 "$XDG_RUNTIME_DIR" 2>/dev/null || true
 
 unset SESSION_MANAGER
-unset DBUS_SESSION_BUS_ADDRESS
+# The session bus lives at $XDG_RUNTIME_DIR/bus, started by Supervisor's
+# user-dbus program.  systemd-user aware tools (the OpenClaw Gateway
+# companion, busctl --user, ...) look for org.freedesktop.systemd1 there, and
+# dbus-run-session would start a private bus under /tmp that they cannot see.
+export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
 
 # Supervisor starts this unit shortly after KasmVNC; allow Xvnc a few seconds
 # to create the display socket instead of burning restart attempts.
@@ -43,7 +47,7 @@ done
 # find org.freedesktop.secrets, and unlocking the login keyring with the
 # desktop password keeps the "unlock keyring" dialog from appearing.  The
 # keyring file lives in $HOME, so it is created anew with each container.
-exec dbus-run-session -- bash -c '
+exec bash -c '
     if [ -n "${DESKTOP_PW:-}" ] && command -v gnome-keyring-daemon >/dev/null 2>&1; then
         printf "%s" "$DESKTOP_PW" | gnome-keyring-daemon --unlock --components=secrets >/dev/null 2>&1 || true
     fi

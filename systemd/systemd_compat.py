@@ -22,13 +22,32 @@ import time
 from pathlib import Path
 from typing import Any
 
-UNIT_DIRS = [
+# The desktop account whose systemd *user* session this layer also stands in
+# for.  A real systemd user session keeps its units in ~/.config/systemd/user
+# and advertises the manager on $XDG_RUNTIME_DIR/bus; both halves of that
+# convention are honoured so systemd-user-aware desktop software (the OpenClaw
+# Gateway companion, busctl --user, ...) finds what it expects.
+DESKTOP_USER = "desktop"
+DESKTOP_UID = 1000
+DESKTOP_HOME = Path("/home/desktop")
+DESKTOP_RUNTIME_DIR = Path("/run/user/1000")
+
+SYSTEM_UNIT_DIRS = [
     Path("/etc/systemd/system"),
     Path("/run/systemd/system"),
     Path("/usr/local/lib/systemd/system"),
     Path("/usr/lib/systemd/system"),
     Path("/lib/systemd/system"),
 ]
+USER_UNIT_DIRS = [
+    Path("/etc/systemd/user"),
+    Path("/run/user/1000/systemd/user"),
+    Path("/usr/local/lib/systemd/user"),
+    Path("/usr/lib/systemd/user"),
+    Path("/lib/systemd/user"),
+    DESKTOP_HOME / ".config/systemd/user",
+]
+UNIT_DIRS = SYSTEM_UNIT_DIRS + USER_UNIT_DIRS
 SUPERVISOR_CONF_DIR = Path("/etc/supervisor/conf.d")
 SUPERVISORCTL = shutil.which("supervisorctl") or "/usr/bin/supervisorctl"
 SUPERVISOR_SOCK = "unix:///run/supervisor.sock"
@@ -162,6 +181,18 @@ def unit_path(unit: str) -> Path | None:
     return None
 
 
+def is_user_unit(unit: str) -> bool:
+    """True when the unit's fragment lives in a systemd *user* unit directory."""
+    path = unit_path(unit)
+    if path is None:
+        return False
+    try:
+        resolved = path.resolve()
+    except OSError:
+        resolved = path
+    return any(resolved.parent == directory for directory in USER_UNIT_DIRS)
+
+
 def is_masked(unit: str) -> bool:
     path = unit_path(unit)
     if path is None or not path.is_symlink():
@@ -198,6 +229,33 @@ def unit_config(unit: str) -> configparser.ConfigParser:
         # crash because a third-party unit file uses an unusual directive.
         pass
     return parser
+
+
+def section_values(unit: str, section: str, key: str) -> list[str]:
+    """Every value for key= inside section, in file order.
+
+    ConfigParser keeps only the *last* duplicate, but systemd units legally
+    repeat Environment= (one assignment per line) and generated units rely on
+    that, so the raw fragment is scanned instead.
+    """
+    path = unit_path(unit)
+    if path is None or is_masked(unit):
+        return []
+    values: list[str] = []
+    current = ""
+    for raw in read_text(path).splitlines():
+        line = raw.strip()
+        if not line or line[0] in ("#", ";"):
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            current = line[1:-1].strip()
+            continue
+        if current != section or "=" not in line:
+            continue
+        name, value = line.split("=", 1)
+        if name.strip() == key:
+            values.append(value.strip())
+    return values
 
 
 def unit_description(unit: str) -> str:
@@ -572,9 +630,10 @@ def _expand_specifiers(command: str, unit: str) -> str:
         "%P": base.split("@", 1)[0],
         "%i": instance,
         "%I": instance,
-        "%u": "desktop",
-        "%U": "1000",
-        "%h": "/home/desktop",
+        "%u": DESKTOP_USER,
+        "%U": str(DESKTOP_UID),
+        "%h": str(DESKTOP_HOME),
+        "%t": str(DESKTOP_RUNTIME_DIR) if is_user_unit(unit) else "/run",
     }
     for key, value in replacements.items():
         command = command.replace(key, value)
@@ -595,21 +654,29 @@ def _build_dynamic_command(unit: str) -> tuple[str, dict[str, str], str, str]:
     command = _expand_specifiers(command, unit)
 
     env: dict[str, str] = {}
-    for item in shlex.split(parser.get("Service", "Environment", fallback="")):
-        if "=" in item:
-            key, value = item.split("=", 1)
-            env[key] = value
-    for env_file in parser.get("Service", "EnvironmentFile", fallback="").split():
-        candidate = Path(env_file.lstrip("-"))
-        if not candidate.is_absolute():
-            candidate = Path("/") / candidate
-        if candidate.is_file():
-            for line in read_text(candidate).splitlines():
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                key, value = line.split("=", 1)
-                env[key.strip()] = value.strip().strip('"').strip("'")
+    # systemd >= 250 expands specifiers in Environment= values and the units
+    # OpenClaw generates escape literal percent signs as %%, so the values pass
+    # through the same expansion the command line does.
+    for raw in section_values(unit, "Service", "Environment"):
+        for item in shlex.split(raw):
+            if "=" in item:
+                key, value = item.split("=", 1)
+                env[key] = _expand_specifiers(value, unit)
+    for raw in section_values(unit, "Service", "EnvironmentFile"):
+        for token in shlex.split(raw):
+            token = token.lstrip("-")
+            if not token:
+                continue
+            candidate = Path(_expand_specifiers(token, unit))
+            if not candidate.is_absolute():
+                candidate = Path("/") / candidate
+            if candidate.is_file():
+                for line in read_text(candidate).splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    key, value = line.split("=", 1)
+                    env[key.strip()] = value.strip().strip('"').strip("'")
 
     pre = parser.get("Service", "ExecStartPre", fallback="").strip()
     if pre:
@@ -629,6 +696,35 @@ def _build_dynamic_command(unit: str) -> tuple[str, dict[str, str], str, str]:
         working_dir = working_dir[1:].lstrip()
     if working_dir:
         working_dir = _expand_specifiers(working_dir, unit)
+    if is_user_unit(unit):
+        # A systemd user unit inherits the user manager's environment (HOME,
+        # the runtime directory and the session bus) and has no User= of its
+        # own.  Supervisor launches the process directly, so those have to be
+        # supplied explicitly.
+        user = user or DESKTOP_USER
+        env.setdefault("HOME", str(DESKTOP_HOME))
+        env.setdefault("USER", DESKTOP_USER)
+        env.setdefault("LOGNAME", DESKTOP_USER)
+        env.setdefault("XDG_RUNTIME_DIR", str(DESKTOP_RUNTIME_DIR))
+        env.setdefault(
+            "DBUS_SESSION_BUS_ADDRESS", f"unix:path={DESKTOP_RUNTIME_DIR}/bus"
+        )
+    if working_dir:
+        directory = Path(working_dir)
+        if (
+            directory.is_absolute()
+            and not directory.is_dir()
+            and directory.is_relative_to(DESKTOP_HOME)
+        ):
+            try:
+                directory.mkdir(parents=True, exist_ok=True)
+                shutil.chown(directory, DESKTOP_USER, DESKTOP_USER)
+            except OSError:
+                pass
+        if not directory.is_dir():
+            # Supervisor refuses to start a program whose directory= is
+            # missing; a real user manager would have created it.
+            working_dir = ""
     # Supervisor performs %(...)s-style interpolation in command= values.
     # A literal percent sign must be doubled before the command is written.
     command = command.replace("%", "%%")
