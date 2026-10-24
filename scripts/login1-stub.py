@@ -3,9 +3,9 @@
 
 The image runs Supervisor as PID 1, so there is no logind.  The systemd
 package still ships logind's D-Bus activation file, which means applications
-that ask for a sleep inhibitor (OpenClaw's "Keep computer awake", for example)
-fail with org.freedesktop.DBus.Error.Spawn.ChildExited instead of getting an
-answer.
+that ask for a sleep inhibitor (a desktop app's "Keep computer awake", for
+example) fail with org.freedesktop.DBus.Error.Spawn.ChildExited instead of
+getting an answer.
 
 This service takes over that bus name, reports that suspend/hibernate are not
 available, and hands back a real (inert) file descriptor from Inhibit().  The

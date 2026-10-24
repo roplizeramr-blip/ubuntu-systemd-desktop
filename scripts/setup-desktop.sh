@@ -79,12 +79,21 @@ set_prop xfce4-power-manager /xfce4-power-manager/blank-on-ac int 0
 set_prop xfce4-power-manager /xfce4-power-manager/dpms-enabled bool false
 set_prop xfce4-power-manager /xfce4-power-manager/inactivity-on-ac int 0
 
-# Desktop icons.
-set_prop xfce4-desktop /desktop-icons/file-icons/show-home bool true
-set_prop xfce4-desktop /desktop-icons/file-icons/show-filesystem bool true
-set_prop xfce4-desktop /desktop-icons/file-icons/show-removable bool false
-set_prop xfce4-desktop /desktop-icons/file-icons/show-trash bool true
-set_prop xfce4-desktop /desktop-icons/file-icons/show-unknown bool true
+# Desktop icons.  The image ships a wallpaper-only desktop: xfdesktop does not
+# paint or track file icons on the backdrop, so the remote session has one less
+# surface to repaint.  The launcher .desktop files still exist in
+# /opt/desktop/applications and in the application menu; only the backdrop icons
+# go away.  Set DESKTOP_ICONS=1 in the deployment environment to restore them.
+if [ "${DESKTOP_ICONS:-0}" = "1" ]; then
+    set_prop xfce4-desktop /desktop-icons/style int 2
+    set_prop xfce4-desktop /desktop-icons/file-icons/show-home bool true
+    set_prop xfce4-desktop /desktop-icons/file-icons/show-filesystem bool true
+    set_prop xfce4-desktop /desktop-icons/file-icons/show-removable bool false
+    set_prop xfce4-desktop /desktop-icons/file-icons/show-trash bool true
+    set_prop xfce4-desktop /desktop-icons/file-icons/show-unknown bool true
+else
+    set_prop xfce4-desktop /desktop-icons/style int 0
+fi
 
 # Arabic + US keyboard, toggled with Alt+Shift.
 if command -v setxkbmap >/dev/null 2>&1; then

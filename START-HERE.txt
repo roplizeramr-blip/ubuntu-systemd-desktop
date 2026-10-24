@@ -20,7 +20,7 @@ C:\Users\East-Sound\Desktop\ubuntu-systemd-desktop
    VNC_PW=كلمة-مرور-قوية-6-أحرف-على-الأقل
    DESKTOP_PW=كلمة-مرور-لينكس-قوية
    VNC_RESOLUTION=1440x900
-   VNC_FRAME_RATE=60
+   VNC_FRAME_RATE=30
    VNC_USER=desktop
    VNC_AUTH=1
    TZ=Africa/Cairo

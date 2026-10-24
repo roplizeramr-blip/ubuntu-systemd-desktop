@@ -18,7 +18,7 @@ services:
       VNC_PW: "${VNC_PW:?Set VNC_PW in .env or the shell}"
       VNC_USER: "${VNC_USER:-admin}"
       VNC_AUTH: "${VNC_AUTH:-1}"
-      VNC_FRAME_RATE: "${VNC_FRAME_RATE:-60}"
+      VNC_FRAME_RATE: "${VNC_FRAME_RATE:-30}"
       DESKTOP_PW: "${DESKTOP_PW:-}"
       TS_HOSTNAME: "${TS_HOSTNAME:-ubuntu-desktop}"
       TS_AUTHKEY: "${TS_AUTHKEY:-}"

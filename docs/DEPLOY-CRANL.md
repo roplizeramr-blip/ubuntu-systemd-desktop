@@ -39,7 +39,8 @@ Then create the app with the image and port `3000` / health `/healthz`.
 | `VNC_PW` | a strong unique password (minimum 6 characters) |
 | `DESKTOP_PW` | optional strong Linux password for `desktop` |
 | `VNC_RESOLUTION` | `1440x900` |
-| `VNC_FRAME_RATE` | `60` |
+| `VNC_FRAME_RATE` | `30` |
+| `DESKTOP_ICONS` | optional; `1` restores the desktop backdrop icons |
 | `VNC_USER` | `desktop` |
 | `VNC_AUTH` | `1` |
 | `TZ` | `Africa/Cairo` |

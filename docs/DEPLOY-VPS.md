@@ -52,7 +52,7 @@ docker run -d --name ubuntu-desktop \
   -e VNC_PW='Ch4ngeM3-strong' \
   -e DESKTOP_PW='Ch4ngeMe!2026' \
   -e VNC_RESOLUTION='1440x900' \
-  -e VNC_FRAME_RATE='60' \
+  -e VNC_FRAME_RATE='30' \
   -e TS_AUTHKEY='tskey-auth-...' \
   -e TS_HOSTNAME='ubuntu-vps' \
   -e SWAP_ENABLED='0' \
@@ -99,7 +99,7 @@ With host swap and `SWAP_ENABLED=0`, check `swapon --show` on the host instead.
 ## 5. Performance notes
 
 - Keep the default `1440x900`; lower it to `1280x800` on a slow link.
-- `VNC_FRAME_RATE=60` is the default; lower it to `30` if CPU/bandwidth is tight.
+- `VNC_FRAME_RATE=30` is the default; lower it to `20` if CPU/bandwidth is tight.
 - KasmVNC chooses adaptive JPEG/WebP encoding; there is no noVNC quality query
   string to tune.
 - `SWAP_SPARSE=0` on a VPS creates a fully allocated file; a sparse file can be

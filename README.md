@@ -33,9 +33,7 @@ Linux system, while Supervisor remains the real process manager.
 - Ubuntu 24.04 LTS, XFCE, Google Chrome from Google's APT repository, Arabic
   localization.
 - KasmVNC `1.5.0` from the official release, checksum-pinned and loopback-only.
-- OpenClaw desktop `2026.10.6` preinstalled from the official release,
-  checksum-pinned (`--build-arg INSTALL_OPENCLAW=0` skips it), with
-  `gnome-keyring` for libsecret and a small `logind` facade so sleep-inhibitor
+- `gnome-keyring` for libsecret and a small `logind` facade so sleep-inhibitor
   calls succeed.
 - Node.js `24.22.1` (LTS) from the official tarball and Python `3.15` from the
   deadsnakes PPA, both installed next to the system packages.
@@ -142,7 +140,8 @@ required on the tailnet as a second layer.
 | `VNC_PW` | *(required)* | KasmVNC Basic Auth password. Set it privately for every deployment. Minimum 6 characters. |
 | `VNC_USER` | `admin` | KasmVNC Basic Auth username. |
 | `VNC_AUTH` | `1` | `1` requires Basic Auth. `0` disables it; not recommended. |
-| `VNC_FRAME_RATE` | `60` | KasmVNC maximum frame rate. Lower it for slow links. |
+| `VNC_FRAME_RATE` | `30` | KasmVNC maximum frame rate. Lower it further for slow links. |
+| `DESKTOP_ICONS` | `0` | `0` leaves the desktop wallpaper-only (no backdrop icons). Set `1` to restore them. |
 | `DESKTOP_PW` | *(unset)* | Linux password for `desktop`. Set privately; no password is baked into the image. If unset, the account stays locked. |
 | `ROOT_PW` | *(unset)* | Root password. Set privately to unlock the root account at start; when unset, root stays locked and `sudo` is the only path. |
 | `TS_HOSTNAME` | `ubuntu-desktop` | Tailscale device name. |
@@ -244,8 +243,8 @@ plaintext password in the image or repository.
   `GTK_A11Y=none`, so Mesa stays on llvmpipe and applications do not log the
   harmless libEGL/DRI3 and AT-SPI warnings caused by the missing GPU and
   accessibility bus.
-- **OpenClaw is the heaviest optional piece** (WebKitGTK + GStreamer, roughly
-  +350 MB). Build with `--build-arg INSTALL_OPENCLAW=0` for the lean image.
+- **No desktop icons:** xfdesktop paints only the wallpaper. Set
+  `DESKTOP_ICONS=1` to restore the backdrop icons.
 - **Swap:** disabled by default; see below.
 
 For a slow link, lower `VNC_RESOLUTION` (for example `1280x800`) or

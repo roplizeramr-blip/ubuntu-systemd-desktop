@@ -16,7 +16,7 @@ ENV LANG=en_US.UTF-8 \
     VNC_RESOLUTION=1440x900 \
     VNC_USER=admin \
     VNC_AUTH=1 \
-    VNC_FRAME_RATE=60 \
+    VNC_FRAME_RATE=30 \
     SWAP_ENABLED=0 \
     SWAP_DIR=/var/swap \
     SWAP_FILE=/var/swap/swapfile \
@@ -132,23 +132,10 @@ RUN curl -fsSL \
     && rm -f /tmp/kasmvnc.deb \
     && rm -rf /var/lib/apt/lists/*
 
-# OpenClaw desktop (Tauri + WebKitGTK).  Same policy as KasmVNC: a pinned
-# release asset verified by checksum, so a changed download cannot slip into
-# the image.  The package pulls WebKitGTK and GStreamer, which is most of the
-# image growth; build with --build-arg INSTALL_OPENCLAW=0 for the lean image.
-ARG OPENCLAW_VERSION=2026.10.6
-ARG OPENCLAW_SHA256=962bef5fb06b24fa24e592a6128137225a04acf9c1f742dd251715e40131263d
-ARG INSTALL_OPENCLAW=1
-RUN if [ "$INSTALL_OPENCLAW" = "1" ]; then \
-        curl -fsSL \
-            "https://github.com/openclaw/openclaw/releases/download/v${OPENCLAW_VERSION}/OpenClaw-${OPENCLAW_VERSION}-amd64.deb" \
-            -o /tmp/openclaw.deb \
-        && echo "${OPENCLAW_SHA256}  /tmp/openclaw.deb" | sha256sum -c - \
-        && apt-get update \
-        && apt-get install -y --no-install-recommends /tmp/openclaw.deb \
-        && rm -f /tmp/openclaw.deb \
-        && rm -rf /var/lib/apt/lists/*; \
-    fi
+# OpenClaw was removed from this image on request: the desktop bundle pulled in
+# WebKitGTK + GStreamer (roughly +350 MB) and its Gateway companion ran a pinned
+# Node runtime at idle, which was the single largest CPU consumer in the
+# container.  Nothing here depends on it.
 
 RUN sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
     && locale-gen
@@ -169,36 +156,6 @@ RUN set -eux; \
     install -d -m 0755 -o desktop -g desktop /home/desktop/.config; \
     install -d -m 0755 -o desktop -g desktop /home/desktop/.cache; \
     install -d -m 0700 -o desktop -g desktop /home/desktop/.vnc
-
-# The desktop package ships a CLI installer but nothing ever runs it, so the
-# app started with "OpenClaw CLI not found" and refused to arm its bundled
-# runtime ("this CLI cannot verify the current runtime pin and service
-# definition").  Run the shipped installer for the desktop user at build time:
-# it fetches its own private Node runtime and installs the CLI under
-# /home/desktop/.openclaw, which is where the app looks for it.  --runtime-only
-# matches what the app itself does; it wires up the Gateway service later, once
-# the systemd user session exists.  npm has a known ENOTEMPTY flake on first
-# install; the retry loop makes the build deterministic.
-ARG OPENCLAW_CLI_VERSION=2026.10.7
-RUN if [ "$INSTALL_OPENCLAW" = "1" ]; then \
-        set -eux; \
-        install -d -m 0755 -o desktop -g desktop /home/desktop/.openclaw; \
-        for attempt in 1 2 3; do \
-            if runuser -u desktop -- env HOME=/home/desktop \
-                bash /usr/lib/OpenClaw/install-cli.sh \
-                    --prefix /home/desktop/.openclaw \
-                    --version "${OPENCLAW_CLI_VERSION}" \
-                    --runtime-only \
-                    --no-onboard; then \
-                break; \
-            fi; \
-            rm -rf /home/desktop/.openclaw /home/desktop/.npm; \
-            install -d -m 0755 -o desktop -g desktop /home/desktop/.openclaw; \
-        done; \
-        test -x /home/desktop/.openclaw/bin/openclaw; \
-        ln -sfn /home/desktop/.openclaw/bin/openclaw /usr/local/bin/openclaw; \
-        rm -rf /home/desktop/.npm; \
-    fi
 
 # Compatibility layer, units, D-Bus facade and desktop assets.
 # The packaged session-bus activation file is a symlink to the system-bus one,
@@ -280,7 +237,7 @@ RUN cp /opt/desktop/applications/*.desktop /home/desktop/Desktop/ \
     && chown root:desktop /etc/supervisor/conf.d \
     && chmod 0775 /etc/supervisor/conf.d \
     && chown desktop:desktop /home/desktop \
-    && find /home/desktop -mindepth 1 -maxdepth 1 ! -name .openclaw \
+    && find /home/desktop -mindepth 1 -maxdepth 1 \
         -exec chown -R desktop:desktop {} + \
     && chown -R desktop:desktop /opt/desktop \
     && install -d -m 0755 /var/log/supervisor /var/log/journal \

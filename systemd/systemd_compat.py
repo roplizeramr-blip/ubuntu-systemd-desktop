@@ -25,8 +25,8 @@ from typing import Any
 # The desktop account whose systemd *user* session this layer also stands in
 # for.  A real systemd user session keeps its units in ~/.config/systemd/user
 # and advertises the manager on $XDG_RUNTIME_DIR/bus; both halves of that
-# convention are honoured so systemd-user-aware desktop software (the OpenClaw
-# Gateway companion, busctl --user, ...) finds what it expects.
+# convention are honoured so systemd-user-aware desktop software (busctl
+# --user, `systemctl --user`, ...) finds what it expects.
 DESKTOP_USER = "desktop"
 DESKTOP_UID = 1000
 DESKTOP_HOME = Path("/home/desktop")
@@ -716,8 +716,8 @@ def _build_dynamic_command(unit: str) -> tuple[str, dict[str, str], str, str]:
     command = _expand_specifiers(command, unit)
 
     env: dict[str, str] = {}
-    # systemd >= 250 expands specifiers in Environment= values and the units
-    # OpenClaw generates escape literal percent signs as %%, so the values pass
+    # systemd >= 250 expands specifiers in Environment= values and generated
+    # units escape literal percent signs as %%, so the values pass
     # through the same expansion the command line does.
     for raw in section_values(unit, "Service", "Environment"):
         for item in shlex.split(raw):

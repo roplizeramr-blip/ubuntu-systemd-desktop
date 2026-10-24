@@ -114,7 +114,7 @@ LIST_KEYS = {
 
 # systemd reports ExecStart as an array of (sasbttttuii) structs:
 #   binary path, argv, ignore-failure flag, four timestamps, then three
-#   integers.  OpenClaw's service inspector decodes exactly that layout, so
+#   integers.  Systemd-aware desktop apps decode exactly that layout, so
 #   the facade must not collapse it to a plain string.
 EXEC_START_ELEMENT_SIGNATURE = "sasbttttuii"
 
