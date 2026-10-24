@@ -591,17 +591,31 @@ def get_properties(unit: str) -> dict[str, Any]:
     def prop(section: str, key: str, fallback: str = "") -> str:
         return parser.get(section, key, fallback=fallback).strip()
 
+    # systemd units legally repeat Environment= (one assignment per line) and
+    # ConfigParser keeps only the last duplicate, so merge every line.
+    environment_assignments: list[str] = []
+    for raw in section_values(unit, "Service", "Environment"):
+        try:
+            environment_assignments.extend(
+                item for item in shlex.split(raw) if "=" in item
+            )
+        except ValueError:
+            continue
+
     props: dict[str, Any] = {
         "Id": unit,
         "Names": [unit],
         "Description": description,
         "LoadState": "masked" if masked else ("loaded" if exists else "not-found"),
+        "DropInPaths": [],
+        "NeedDaemonReload": False,
         "ActiveState": active,
         "SubState": sub,
         "FragmentPath": fragment,
         "SourcePath": fragment,
         "UnitFileState": enabled,
         "CanStart": "yes" if exists and not masked else "no",
+        "RefuseManualStart": False,
         "CanStop": "yes" if exists and not masked else "no",
         "CanReload": "yes" if prop("Service", "ExecReload") else "no",
         "CanIsolate": "no",
@@ -638,9 +652,9 @@ def get_properties(unit: str) -> dict[str, Any]:
         "User": prop("Service", "User"),
         "Group": prop("Service", "Group"),
         "WorkingDirectory": prop("Service", "WorkingDirectory"),
-        "Environment": [
-            item for item in shlex.split(prop("Service", "Environment")) if "=" in item
-        ],
+        "Environment": environment_assignments,
+        "EnvironmentFiles": [],
+        "UnsetEnvironment": [],
         "StandardOutput": prop("Service", "StandardOutput", "journal") or "journal",
         "StandardError": prop("Service", "StandardError", "inherit") or "inherit",
         "RemainAfterExit": "yes" if unit_remain_after_exit(unit) else "no",

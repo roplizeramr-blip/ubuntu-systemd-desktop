@@ -143,6 +143,10 @@ def parse_argv(argv: list[str]) -> tuple[str, list[str], dict[str, object]]:
                         value = int(value)
                     except ValueError:
                         value = 10
+                if key == "property" and opts.get("property"):
+                    # systemctl accepts repeated -p/--property flags and shows
+                    # every requested property; fold them into one list.
+                    value = f"{opts['property']},{value}"
                 opts[key] = value
                 i += 2
                 continue
@@ -157,6 +161,8 @@ def parse_argv(argv: list[str]) -> tuple[str, list[str], dict[str, object]]:
                         value = int(value)
                     except ValueError:
                         value = 10
+                if key == "property" and opts.get("property"):
+                    value = f"{opts['property']},{value}"
                 opts[key] = value
                 i += 1
                 continue

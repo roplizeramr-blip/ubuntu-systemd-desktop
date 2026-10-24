@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import platform
+import shlex
 import signal
 import sys
 import time
@@ -46,6 +47,8 @@ BOOL_KEYS = {
     "SurviveFinalKillSignal",
     "RemainAfterExit",
     "GuessMainPID",
+    "NeedDaemonReload",
+    "RefuseManualStart",
     "Delegate",
     "PermissionsStartOnly",
     "RootDirectoryStartOnly",
@@ -105,10 +108,52 @@ LIST_KEYS = {
     "Also",
     "UnitPath",
     "Environment",
+    "DropInPaths",
+    "UnsetEnvironment",
 }
+
+# systemd reports ExecStart as an array of (sasbttttuii) structs:
+#   binary path, argv, ignore-failure flag, four timestamps, then three
+#   integers.  OpenClaw's service inspector decodes exactly that layout, so
+#   the facade must not collapse it to a plain string.
+EXEC_START_ELEMENT_SIGNATURE = "sasbttttuii"
+
+
+def exec_start_value(value: object) -> object:
+    """Render an ExecStart= command line as systemd's (sasbttttuii) array."""
+    element_signature = "(" + EXEC_START_ELEMENT_SIGNATURE + ")"
+    command = str(value or "").strip()
+    try:
+        argv = shlex.split(command)
+    except ValueError:
+        argv = command.split()
+    if not argv:
+        return dbus.Array([], signature=element_signature)
+    entry = dbus.Struct(
+        (
+            dbus.String(argv[0]),
+            dbus.Array([dbus.String(part) for part in argv], signature="s"),
+            dbus.Boolean(False),
+            dbus.UInt64(0),
+            dbus.UInt64(0),
+            dbus.UInt64(0),
+            dbus.UInt64(0),
+            dbus.UInt32(0),
+            dbus.Int32(0),
+            dbus.Int32(0),
+        ),
+        signature=EXEC_START_ELEMENT_SIGNATURE,
+    )
+    return dbus.Array([entry], signature=element_signature)
 
 
 def dbus_value(key: str, value: object) -> object:
+    if key == "ExecStart":
+        return exec_start_value(value)
+    if key == "EnvironmentFiles":
+        # systemd exposes EnvironmentFiles as a list of (path, ignore-failure)
+        # pairs; the compatibility units never use them.
+        return dbus.Array([], signature="(sb)")
     if key in LIST_KEYS:
         if isinstance(value, (list, tuple)):
             return dbus.Array([dbus.String(str(item)) for item in value], signature="s")
@@ -619,6 +664,8 @@ class Unit(dbus.service.Object):
                 "Group",
                 "WorkingDirectory",
                 "Environment",
+                "EnvironmentFiles",
+                "UnsetEnvironment",
                 "StandardOutput",
                 "StandardError",
                 "RemainAfterExit",
