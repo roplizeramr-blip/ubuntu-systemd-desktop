@@ -16,25 +16,10 @@ export SWAP_DIR="${SWAP_DIR:-/var/swap}"
 export SWAP_FILE="${SWAP_FILE:-${SWAP_DIR}/swapfile}"
 export SWAP_SIZE_MB="${SWAP_SIZE_MB:-6144}"
 export SWAP_SPARSE="${SWAP_SPARSE:-1}"
-export TS_HOSTNAME="${TS_HOSTNAME:-ubuntu-desktop}"
-export TS_STATE_DIR="${TS_STATE_DIR:-/var/lib/tailscale}"
-export TS_TUN="${TS_TUN:-userspace}"
-# VNC is published on the Tailscale link (MagicDNS name over HTTPS on :443) so
-# "Open VNC" uses https://<host>.<tailnet>.ts.net/ and no port on the raw
-# Tailscale IP is consumed.  The raw TCP rule is opt-in only; leave the IP and
-# its ports free for other apps you host on the same node.
-export TS_SERVE_HTTPS_PORT="${TS_SERVE_HTTPS_PORT:-443}"
-export TS_SERVE_HTTP_PORT="${TS_SERVE_HTTP_PORT:-0}"
-export TS_SERVE_FALLBACK_TCP="${TS_SERVE_FALLBACK_TCP:-0}"
-# TS_FUNNEL=1 publishes the desktop publicly on the internet with
-# `tailscale funnel` (still password protected).  The default, 0, keeps it
-# private to devices signed in to the same tailnet.
-export TS_FUNNEL="${TS_FUNNEL:-0}"
 # PUBLIC_DESKTOP=1 makes the public CranL port serve the KasmVNC desktop at /
 # (control page moves to /status).  0 keeps the public port on the lightweight
-# control page and leaves the desktop reachable only through Tailscale.
+# control page and does not expose the desktop at all.
 export PUBLIC_DESKTOP="${PUBLIC_DESKTOP:-0}"
-export TS_SERVE_INTERVAL="${TS_SERVE_INTERVAL:-10}"
 
 if ! locale -a 2>/dev/null | grep -qi '^en_US\.utf8$'; then
     export LANG="C.UTF-8"
@@ -55,8 +40,6 @@ fi
 # lock files left behind by a previous container run before starting fresh.
 rm -f /run/dbus/system_bus_socket /run/dbus/pid /run/supervisor.sock
 rm -f "/tmp/.X${KASM_DISPLAY}-lock" "/tmp/.X11-unix/X${KASM_DISPLAY}"
-rm -f /run/desktop-tailscale-http.ok /run/desktop-tailscale-https.ok
-rm -f /var/run/tailscale/tailscaled.sock
 install -d -m 0755 /run/systemd/system /run/systemd/journal /run/dbus
 install -d -m 1777 /tmp/.X11-unix
 install -d -m 0755 /var/log/supervisor /var/log/journal
@@ -64,8 +47,6 @@ install -d -m 0700 -o desktop -g desktop /run/user/1000
 install -d -m 0700 -o desktop -g desktop /home/desktop/.vnc
 install -d -m 0755 -o desktop -g desktop \
     /home/desktop/.config /home/desktop/.cache /home/desktop/Desktop
-install -d -m 0700 /var/lib/tailscale
-install -d -m 0755 /var/run/tailscale
 
 # Best-effort kernel memory tuning. /proc/sys is read-only in some containers;
 # a failure here must never stop the desktop from starting.
@@ -79,7 +60,7 @@ for setting in \
 done
 
 echo "[desktop] KasmVNC ${VNC_RESOLUTION} on 127.0.0.1:${KASM_PORT} (display :${KASM_DISPLAY}, auth=${VNC_AUTH})"
-echo "[desktop] public port :${CONTROL_PORT} -> $(if [ "${PUBLIC_DESKTOP}" = "1" ]; then echo 'KasmVNC at / (control page at /status)'; else echo 'control page at /'; fi); Tailscale $(if [ "${TS_FUNNEL}" = "1" ]; then echo 'Funnel (public)'; else echo 'Serve (tailnet only)'; fi) HTTPS :${TS_SERVE_HTTPS_PORT} -> 127.0.0.1:${KASM_PORT} (raw TCP :${TS_SERVE_HTTP_PORT})"
+echo "[desktop] public port :${CONTROL_PORT} -> $(if [ "${PUBLIC_DESKTOP}" = "1" ]; then echo 'KasmVNC at / (control page at /status)'; else echo 'control page at /'; fi)"
 echo "[desktop] swap enabled=${SWAP_ENABLED} (${SWAP_SIZE_MB} MiB at ${SWAP_FILE})"
 
 # A stable machine-id and boot timestamp make hostnamectl/journalctl useful.

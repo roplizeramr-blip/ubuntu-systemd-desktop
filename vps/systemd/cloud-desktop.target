@@ -1,0 +1,9 @@
+[Unit]
+Description=Cloud desktop (KasmVNC + XFCE + control page)
+Documentation=file:///opt/desktop/web/index.html
+Wants=kasmvnc.service xfce.service control.service
+After=kasmvnc.service xfce.service control.service
+AllowIsolate=yes
+
+[Install]
+WantedBy=multi-user.target

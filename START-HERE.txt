@@ -1,61 +1,64 @@
-مشروع Ubuntu Cloud Desktop
-==========================
+سطح مكتب Ubuntu على السحابة
+============================
 
-سطح مكتب Ubuntu 24.04 + XFCE + Google Chrome، يعمل بـ KasmVNC ويُفتح بشكل خاص
-عبر Tailscale. المنفذ العام في CranL يعرض صفحة التحكم فقط، وليس سطح المكتب.
+Ubuntu 24.04 + XFCE + Google Chrome، يُعرض في المتصفح عبر KasmVNC.
+بدون Tailscale وبدون أي وكيل ذكاء اصطناعي.
 
-المسار:
-C:\Users\East-Sound\Desktop\ubuntu-systemd-desktop
+المستودع:
+https://github.com/roplizeramr-blip/ubuntu-systemd-desktop
 
-الخطوات السريعة
----------------
-1. ارفع المجلد إلى GitHub.
-2. أنشئ تطبيقًا على CranL من المستودع:
+خطوات النشر على CranL
+---------------------
+1. ارفع المستودع إلى GitHub.
+2. في CranL أنشئ تطبيقاً من المستودع:
    - Build: Dockerfile
    - Port: 3000
    - Health: /healthz
    - Region: netherlands-1
-3. أضف المتغيرات الخاصة (وليست داخل المستودع):
+3. أضف متغيرات البيئة:
    CONTROL_PORT=3000
-   VNC_PW=كلمة-مرور-قوية-6-أحرف-على-الأقل
-   DESKTOP_PW=كلمة-مرور-لينكس-قوية
+   VNC_USER=admin
+   VNC_PW=<كلمة سر قوية 6 أحرف على الأقل>
+   DESKTOP_PW=<كلمة سر حساب لينكس>
+   ROOT_PW=<كلمة سر root>            # اختياري
    VNC_RESOLUTION=1440x900
    VNC_FRAME_RATE=30
-   VNC_USER=desktop
    VNC_AUTH=1
+   PUBLIC_DESKTOP=1
    TZ=Africa/Cairo
-   TS_HOSTNAME=ubuntu-desktop
-   # اختياري: TS_AUTHKEY=tskey-auth-...
-   # اختياري: SWAP_ENABLED=0
-4. افتح رابط التطبيق، ثم اضغط Connect Tailscale.
-5. وافق على رابط الدخول في التبويب الجديد.
-6. بعد ظهور رابط Tailscale (اسم MagicDNS) اضغط Open VNC، وسجّل الدخول باسم
-   desktop وكلمة مرور VNC_PW.
-7. لاستخدامه من الهاتف: ثبّت Tailscale على الهاتف، سجّل الدخول إلى نفس
-   الشبكة، ثم افتح نفس رابط Tailscale (يتطلب تفعيل MagicDNS وشهادات HTTPS).
+   CHROME_AUTOSTART=1
+   SWAP_ENABLED=0
+4. اضغط Deploy وانتظر انتهاء البناء.
+5. افتح رابط التطبيق:
+   - /        → سطح المكتب (يسأل عن VNC_USER / VNC_PW)
+   - /status  → صفحة الحالة
+   - /healthz → فحص الصحة
+
+ملاحظة: git push يبني الصورة لكنه لا يستبدل الحاوية العاملة،
+لازم تعمل Deploy بعد البناء.
 
 بيانات الدخول
 -------------
-VNC user: desktop
-VNC password: القيمة التي وضعتها في VNC_PW
-Linux user: desktop
-Linux password: القيمة التي وضعتها في DESKTOP_PW
+VNC user: admin
+VNC password: الذي تحدده في VNC_PW
 
-لا توجد كلمة مرور افتراضية مكتوبة داخل المستودع. لا ترفع VNC_PW أو
-DESKTOP_PW أو TS_AUTHKEY إلى GitHub.
+Linux user: desktop
+Linux password: الذي تحدده في DESKTOP_PW
+
+لا تضع أي كلمة سر داخل المستودع أو داخل الصورة.
 
 ملاحظات مهمة
 ------------
-- سطح المكتب KasmVNC يستمع على 127.0.0.1:6080 فقط.
-- Tailscale Serve يمرر منفذ 3000 داخل شبكة Tailscale إلى KasmVNC.
-- الرابط العام في CranL لا يعرض سطح المكتب مباشرة.
-- حالة Tailscale مؤقتة عند إعادة النشر إلا إذا استخدمت TS_AUTHKEY أو
-  volume لـ /var/lib/tailscale.
-- طبقة systemd توافقية وليست systemd الحقيقي.
-- البيانات داخل الحاوية مؤقتة؛ نزّل ملفاتك المهمة على جهازك.
-- السواب معطّل افتراضيًا (SWAP_ENABLED=0) لتوفير المساحة والسرعة.
-- راجع:
-  README.md
-  docs/DEPLOY-CRANL.md
-  docs/TESTING.md
-  docs/ARCHITECTURE.md
+- KasmVNC يستمع على 127.0.0.1:6080 فقط؛ المنفذ العام الوحيد هو 3000.
+- systemd داخل الحاوية محاكاة فوق Supervisor، وليست systemd حقيقية.
+- systemd الحقيقية تحتاج VPS/VM — راجع docs/DEPLOY-VPS.md.
+- الملفات داخل الحاوية وتضيع عند إعادة النشر.
+- الصورة بلا GPU: Chrome يعمل بمحرك رسم برمجي.
+
+مزيد من التفاصيل
+----------------
+README.md
+docs/DEPLOY-CRANL.md
+docs/DEPLOY-VPS.md
+docs/ARCHITECTURE.md
+docs/TESTING.md

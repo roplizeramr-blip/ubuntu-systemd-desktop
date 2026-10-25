@@ -30,11 +30,8 @@ echo
 echo "--- Supervisor services -------------------------------------"
 supervisorctl status 2>/dev/null || true
 echo
-echo "--- KasmVNC / Tailscale -------------------------------------"
+echo "--- KasmVNC -------------------------------------------------"
 pgrep -a Xvnc 2>/dev/null || true
-pgrep -a tailscaled 2>/dev/null || true
-tailscale status 2>/dev/null || true
-tailscale serve status 2>/dev/null || true
 echo
 echo "--- Top processes -------------------------------------------"
 ps -eo pid,comm,%cpu,%mem --sort=-%cpu 2>/dev/null | head -12 || true

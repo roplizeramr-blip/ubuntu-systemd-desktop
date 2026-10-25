@@ -42,8 +42,6 @@ check "system is running" bash -c '[ "$(systemctl is-system-running)" = "running
 check "kasmvnc is active" bash -c '[ "$(systemctl is-active kasmvnc.service)" = "active" ]'
 check "xfce is active" bash -c '[ "$(systemctl is-active xfce.service)" = "active" ]'
 check "control page is active" bash -c '[ "$(systemctl is-active control.service)" = "active" ]'
-check "tailscaled is active" bash -c '[ "$(systemctl is-active tailscaled.service)" = "active" ]'
-check "tailscale-serve is active" bash -c '[ "$(systemctl is-active tailscale-serve.service)" = "active" ]'
 check "detect-virt reports none" bash -c '[ "$(systemd-detect-virt)" = "none" ]'
 check_contains "hostnamectl reports Ubuntu" "Ubuntu" hostnamectl
 check_contains "systemctl list-units includes kasmvnc" "kasmvnc.service" systemctl list-units --type=service --no-pager
@@ -69,22 +67,15 @@ for _ in $(seq 1 30); do
 done
 check "health endpoint" curl -fsS --max-time 5 "http://127.0.0.1:${PORT}/healthz"
 check "control page is served" curl -fsS --max-time 5 "http://127.0.0.1:${PORT}/" >/tmp/control-page.html
-check_contains "control page has Open VNC" "Open VNC" cat /tmp/control-page.html
+check_contains "control page has Open desktop" "Open desktop" cat /tmp/control-page.html
 check_contains "control page names KasmVNC" "KasmVNC" cat /tmp/control-page.html
-check_contains "control page names Tailscale" "Tailscale" cat /tmp/control-page.html
 check "status API is valid JSON" bash -c "curl -fsS --max-time 5 http://127.0.0.1:${PORT}/api/status | python3 -m json.tool >/dev/null"
 check_contains "status API reports KasmVNC" '"engine":"KasmVNC"' curl -fsS --max-time 5 "http://127.0.0.1:${PORT}/api/status"
-check_contains "status API reports Tailscale installed" '"installed":true' curl -fsS --max-time 5 "http://127.0.0.1:${PORT}/api/status"
 
-# Tailscale is installed and may legitimately be waiting for the login flow.
-check "tailscale CLI exists" command -v tailscale
-check "tailscale version" tailscale version
-if tailscale status >/dev/null 2>&1; then
-    echo "PASS  tailscale daemon responds"
-    PASS=$((PASS + 1))
-else
-    echo "INFO  tailscale status is not ready yet (NeedsLogin or starting)"
-fi
+# The removed stack must not come back.
+check "Tailscale is absent" bash -c '! command -v tailscale >/dev/null 2>&1'
+check "no tailscaled process" bash -c '! pgrep -x tailscaled >/dev/null 2>&1'
+check "Hermes is absent" bash -c '[ ! -e /home/desktop/.hermes ] && ! command -v hermes >/dev/null 2>&1'
 
 # Old stack should not be present.
 check "noVNC directory is absent" bash -c '[ ! -d /usr/share/novnc ]'

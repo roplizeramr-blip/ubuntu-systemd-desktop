@@ -1,108 +1,88 @@
 # Architecture
 
-## Boot chain
+## Processes
 
 ```
-Docker CMD
-  └─ /usr/local/bin/systemd  (symlink to /usr/bin/supervisord)
-       └─ Supervisor PID 1
-            ├─ systemd-journald  (journal socket sink)
-            ├─ dbus              (system D-Bus daemon)
-            ├─ systemd-dbus      (org.freedesktop.systemd1 facade)
-            ├─ kasmvnc           (KasmVNC on :1, loopback:6080)
-            ├─ xfce              (XFCE session on DISPLAY=:1)
-            ├─ tailscaled        (userspace or kernel Tailscale)
-            ├─ tailscale-serve   (tailnet TCP :3000 -> 127.0.0.1:6080)
-            └─ control           (public page/API on 0.0.0.0:3000)
+                     public :3000
+                          │
+                 ┌────────▼─────────┐
+                 │ control-server.py│  root
+                 │ status + proxy   │
+                 └────────┬─────────┘
+                          │ 127.0.0.1:6080
+                 ┌────────▼─────────┐
+                 │ Xvnc (KasmVNC)   │  desktop
+                 │ HTTP + WebSocket │
+                 └────────┬─────────┘
+                          │ X11 :1
+                 ┌────────▼─────────┐
+                 │ XFCE session     │  desktop
+                 │ xfwm4, panel, …  │
+                 └──────────────────┘
 ```
 
-Desktop setup (wallpaper, launchers and browser defaults) runs inside the
-XFCE program's `dbus-run-session`, not as a separate Supervisor program.  It
-must share the session bus with XFCE so `xfconf-query` can reach the running
-`xfconfd`.
+supervisord is PID 1. It starts, in priority order: dbus, the journald shim, the
+system-bus facade, earlyoom, KasmVNC, the user session bus, the user-bus facade,
+XFCE, and finally the control server.
 
-The entrypoint prepares `/run/systemd/system`, `/run/dbus`,
-`/run/user/1000`, KasmVNC's YAML config and `.kasmpasswd`, the Tailscale state
-directories, `/dev/log` and the machine ID before `exec`-ing Supervisord.
+## Why the control server exists
 
-## Access path
+KasmVNC binds to loopback so the desktop is never directly reachable. The
+control server is the only listener on the public port. It serves:
 
-The public container port `3000` is served by `control-server.py`. It exposes
-only the static control page, `/api/status`, the Tailscale login trigger and
-`/healthz`. KasmVNC binds `127.0.0.1:6080` and is never directly published.
-`tailscale-serve.sh` applies a raw TCP Serve rule, preserving the WebSocket
-traffic, and the control page enables **Open VNC** only after that rule is
-active. The optional TLS-terminated Serve rule provides a certificate-backed
-URL when Tailscale can provision one; plain HTTP over WireGuard remains the
-reliable path.
+| Path | Purpose |
+|---|---|
+| `/` | desktop (when `PUBLIC_DESKTOP=1`) or status page |
+| `/status` | status page (when `PUBLIC_DESKTOP=1`) |
+| `/api/status` | JSON: desktop state, credentials user, URLs |
+| `/healthz` | `200 ok` when KasmVNC accepts connections |
 
-## Why Supervisor as PID 1?
+When `PUBLIC_DESKTOP=1` every other request is reverse-proxied to
+`127.0.0.1:6080`, including the WebSocket upgrade used by the VNC client. There
+is no nginx, no websockify and no second container.
 
-Supervisor is already a process manager with start/stop/restart semantics,
-logging and a control socket.  Running it as PID 1 gives the container a
-normal init-like parent, avoids zombie processes, and keeps the image small.
-The container command is a symlink named `systemd`, so `/proc/1/comm` matches
-the compatibility layer.  The real executable remains Supervisord.
+## Startup sequence
 
-## Unit model
+1. `entrypoint.sh` validates `VNC_PW`, generates `~/.vnc/kasmvnc.yaml`, writes
+   the KasmVNC credential file with `vncpasswd`, applies `DESKTOP_PW`/`ROOT_PW`,
+   prepares `/run` and execs supervisord.
+2. KasmVNC starts Xvnc on `:1` with `-noxstartup`.
+3. `start-xfce.sh` waits for the X socket, then runs `startxfce4` inside the
+   user session bus.
+4. `setup-desktop.sh` applies the wallpaper, disables compositing, animations,
+   screensaver and power management, and starts Chrome on the welcome page.
+5. The control server starts and `/healthz` flips to 200.
 
-- Unit files live in `/etc/systemd/system` and standard systemd directories.
-- Core services are static Supervisor programs.
-- Arbitrary services are translated into `/etc/supervisor/conf.d/unit_*.conf`
-  when `systemctl start` is called.  `ExecStart=`, `Environment=`, `User=`,
-  `WorkingDirectory=` and `Restart=` are supported; `Group=` is reported for
-  status/D-Bus compatibility but Supervisor does not change the process group.
-- `systemctl enable` creates `<target>.wants/` symlinks and, for dynamic
-  units, sets Supervisor `autostart=true`.
-- Targets (`graphical.target`, `multi-user.target`) aggregate dependencies.
+## systemd compatibility layer
 
-## systemctl shim
+`systemd/` contains a Python implementation of the CLI surface that desktop
+software and users expect: `systemctl`, `journalctl`, `hostnamectl`,
+`timedatectl`, `loginctl`, `systemd-analyze`, `systemd-detect-virt`, plus a
+D-Bus facade for `org.freedesktop.systemd1`.
 
-`systemd/systemctl.py`:
+It maps unit names to Supervisor programs (`CORE_UNITS` in
+`systemd/systemd_compat.py`), reads the unit files in `systemd/units/`, and
+drives `supervisorctl` underneath. State is reported as systemd would report it
+so that `systemctl is-system-running` returns `running`.
 
-1. Parses systemctl-style options.
-2. Resolves unit files.
-3. Maps units to Supervisor programs.
-4. Calls `supervisorctl` over `/run/supervisor.sock`.
-5. Formats systemctl-like output and exit codes.
+The facade is deliberately small and read-mostly. It does not emulate cgroups,
+timers, socket activation or kernel units. It is not a security boundary.
 
-## D-Bus facade
+## Storage and state
 
-`systemd/systemd_dbus.py` owns `org.freedesktop.systemd1` on the system bus.
-It exports:
+| Path | Contents |
+|---|---|
+| `/home/desktop` | user files, Chrome profile, XFCE config |
+| `/home/desktop/.vnc` | `kasmvnc.yaml` and `.kasmpasswd` (generated at start) |
+| `/var/log/supervisor` | per-program logs |
+| `/run/systemd/journal` | shim journal socket |
+| `/var/swap` | optional swap file |
 
-- `/org/freedesktop/systemd1` → `Manager`
-- `/org/freedesktop/systemd1/unit/<escaped>` → `Unit`, `Service`, `Target`
-- `/org/freedesktop/systemd1/job/<id>` → `Job`
+Everything outside a mounted volume is lost when the container is recreated.
 
-`GetUnit`, `ListUnits`, `StartUnit`, `StopUnit`, `RestartUnit`,
-`GetUnitFileState`, `EnableUnitFiles`, `DisableUnitFiles`, `GetDefaultTarget`
-and common properties are implemented.  `JobNew` / `JobRemoved` signals are
-emitted around Supervisor operations.
+## Resource profile
 
-D-Bus activation is configured in
-`/usr/share/dbus-1/system-services/org.freedesktop.systemd1.service`; policy
-is in `/etc/dbus-1/system.d/org.freedesktop.systemd1.conf`.
-
-## Journal path
-
-`systemd-journald.py` creates:
-
-- `/run/systemd/journal/socket` (datagram)
-- `/run/systemd/journal/dev-log` (datagram, also linked from `/dev/log`)
-- `/run/systemd/journal/stdout` (stream)
-
-Messages are appended to `/var/log/journal/compat.log`.  `journalctl.py`
-reads that file plus `/var/log/supervisor/*.log`.
-
-## Security boundary
-
-The facade is deliberately not an anti-detection product.  It does not alter
-cgroups, kernel namespaces, overlayfs, the Docker network or `/proc/1/exe`.
-`HIDE_CONTAINER=1` only removes `/.dockerenv`; that is a small compatibility
-convenience, not a guarantee.
-
-The real access boundary is Tailscale: the VNC listener is loopback-only, and
-the public port serves only a status/control page. KasmVNC Basic Auth remains a
-second factor inside the tailnet. The Tailscale auth key is never exposed to the
-browser; only the short-lived login URL is returned by the control API.
+- Image: ~1.1 GB (Ubuntu + XFCE + Chrome + KasmVNC).
+- Idle: roughly 450–600 MB RSS for the full desktop.
+- CPU: near zero when idle; KasmVNC uses the CPU only when the screen changes.
+- No GPU: llvmpipe software rendering, Chrome runs with `--disable-gpu`.

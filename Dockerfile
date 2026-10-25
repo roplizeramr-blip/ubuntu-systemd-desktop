@@ -26,20 +26,12 @@ ENV LANG=en_US.UTF-8 \
     HIDE_CONTAINER=0 \
     CHROME_NO_SANDBOX=1 \
     DESKTOP_HOSTNAME=ubuntu-desktop \
-    TS_HOSTNAME=ubuntu-desktop \
-    TS_STATE_DIR=/var/lib/tailscale \
-    TS_TUN=userspace \
-    TS_SERVE_HTTPS_PORT=443 \
-    TS_SERVE_HTTP_PORT=0 \
-    TS_SERVE_FALLBACK_TCP=0 \
-    TS_FUNNEL=0 \
     PUBLIC_DESKTOP=0 \
-    TS_SERVE_INTERVAL=10 \
     DEBIAN_FRONTEND=noninteractive
 
 # Keep the base current.  The desktop is intentionally lean: KasmVNC replaces
-# TigerVNC + noVNC + websockify, and Tailscale supplies private access without
-# publishing a VNC port.  ssl-cert is required by KasmVNC's bundled web server.
+# TigerVNC + noVNC + websockify.  ssl-cert is required by KasmVNC's bundled web
+# server.
 RUN apt-get update \
     && apt-get -y upgrade \
     && apt-get install -y --no-install-recommends \
@@ -107,17 +99,6 @@ RUN install -d -m 0755 /etc/apt/keyrings \
     && ln -sfn "/usr/bin/python${PYTHON_VERSION}" /usr/local/bin/python \
     && python --version \
     && python -m pip --version \
-    && rm -rf /var/lib/apt/lists/*
-
-# Tailscale (userspace networking mode by default; no TUN/NET_ADMIN needed).
-RUN install -d -m 0755 /usr/share/keyrings \
-    && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg \
-        -o /usr/share/keyrings/tailscale-archive-keyring.gpg \
-    && chmod 0644 /usr/share/keyrings/tailscale-archive-keyring.gpg \
-    && echo "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu noble main" \
-        > /etc/apt/sources.list.d/tailscale.list \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends tailscale \
     && rm -rf /var/lib/apt/lists/*
 
 # KasmVNC 1.5.0: a single HTTP/WebSocket server with adaptive encoding, no
@@ -223,8 +204,6 @@ RUN mkdir -p /etc/systemd/system/graphical.target.wants \
     && ln -sfn /etc/systemd/system/kasmvnc.service /etc/systemd/system/graphical.target.wants/kasmvnc.service \
     && ln -sfn /etc/systemd/system/xfce.service /etc/systemd/system/graphical.target.wants/xfce.service \
     && ln -sfn /etc/systemd/system/control.service /etc/systemd/system/graphical.target.wants/control.service \
-    && ln -sfn /etc/systemd/system/tailscaled.service /etc/systemd/system/graphical.target.wants/tailscaled.service \
-    && ln -sfn /etc/systemd/system/tailscale-serve.service /etc/systemd/system/graphical.target.wants/tailscale-serve.service \
     && ln -sfn /etc/systemd/system/dbus.service /etc/systemd/system/multi-user.target.wants/dbus.service \
     && ln -sfn /etc/systemd/system/systemd-journald.service /etc/systemd/system/multi-user.target.wants/systemd-journald.service \
     && ln -sfn /etc/systemd/system/systemd-dbus.service /etc/systemd/system/multi-user.target.wants/systemd-dbus.service \
@@ -242,8 +221,6 @@ RUN cp /opt/desktop/applications/*.desktop /home/desktop/Desktop/ \
     && chown -R desktop:desktop /opt/desktop \
     && install -d -m 0755 /var/log/supervisor /var/log/journal \
     && install -d -m 0700 /var/swap \
-    && install -d -m 0700 /var/lib/tailscale \
-    && install -d -m 0755 /var/run/tailscale \
     && install -d -m 0755 /opt/systemd-compat
 RUN update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
 RUN fc-cache -f >/dev/null 2>&1 || true

@@ -1,0 +1,27 @@
+[Unit]
+Description=KasmVNC desktop on X display :1
+Documentation=https://github.com/kasmtech/KasmVNC
+After=network-online.target
+Wants=network-online.target
+Before=xfce.service
+
+[Service]
+Type=simple
+User=desktop
+Group=desktop
+PAMName=login
+EnvironmentFile=-/etc/cloud-desktop/desktop.env
+Environment=HOME=/home/desktop
+Environment=DISPLAY=:1
+Environment=KASM_DISPLAY=1
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=XDG_SESSION_TYPE=x11
+Environment=LIBGL_ALWAYS_SOFTWARE=1
+ExecStart=/usr/local/bin/start-kasmvnc.sh
+Restart=always
+RestartSec=3
+KillMode=control-group
+TimeoutStopSec=20
+
+[Install]
+WantedBy=cloud-desktop.target

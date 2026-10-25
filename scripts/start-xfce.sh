@@ -25,13 +25,13 @@ mkdir -p "$XDG_RUNTIME_DIR"
 chmod 0700 "$XDG_RUNTIME_DIR" 2>/dev/null || true
 
 unset SESSION_MANAGER
-# The session bus lives at $XDG_RUNTIME_DIR/bus, started by Supervisor's
-# user-dbus program.  systemd-user aware tools (busctl --user,
+# The session bus lives at $XDG_RUNTIME_DIR/bus, provided by the user manager
+# (systemd --user) or by the container's user-dbus program.  systemd-user aware tools (busctl --user,
 # `systemctl --user`, ...) look for org.freedesktop.systemd1 there, and
 # dbus-run-session would start a private bus under /tmp that they cannot see.
 export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
 
-# Supervisor starts this unit shortly after KasmVNC; allow Xvnc a few seconds
+# The service manager starts this unit shortly after KasmVNC; allow Xvnc a few seconds
 # to create the display socket instead of burning restart attempts.
 for _ in $(seq 1 150); do
     if xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
@@ -41,8 +41,8 @@ for _ in $(seq 1 150); do
 done
 
 # Run setup-desktop inside the same session bus as XFCE.  xfconf-query talks
-# to xfconfd over DBUS_SESSION_BUS_ADDRESS, so a separate Supervisor program
-# would not see the running session.  gnome-keyring is started here as well:
+# to xfconfd over DBUS_SESSION_BUS_ADDRESS, so a program started separately
+# started separately would not see the running session.  gnome-keyring is started here as well:
 # it has to live on this bus so libsecret clients (Chromium and friends, ...)
 # find org.freedesktop.secrets, and unlocking the login keyring with the
 # desktop password keeps the "unlock keyring" dialog from appearing.  The

@@ -35,10 +35,8 @@ def cmd_blame() -> int:
         ("systemd-journald.service", 0.012),
         ("dbus.service", 0.045),
         ("systemd-dbus.service", 0.061),
-        ("tailscaled.service", 0.090),
         ("kasmvnc.service", 0.182),
         ("xfce.service", 0.245),
-        ("tailscale-serve.service", 0.070),
         ("control.service", 0.088),
     ]
     total = sum(value for _, value in rows)
@@ -74,8 +72,6 @@ def cmd_cat_config() -> int:
         Path("/etc/systemd/system/kasmvnc.service"),
         Path("/etc/systemd/system/xfce.service"),
         Path("/etc/systemd/system/control.service"),
-        Path("/etc/systemd/system/tailscaled.service"),
-        Path("/etc/systemd/system/tailscale-serve.service"),
     ):
         if path.is_file():
             print(f"# {path}")

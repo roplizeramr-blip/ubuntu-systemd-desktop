@@ -19,7 +19,7 @@
 
   <g transform="translate(120, 150)">
     <text x="0" y="0" fill="#e6edf7" font-family="DejaVu Sans, sans-serif" font-size="76" font-weight="700">Ubuntu Cloud Desktop</text>
-    <text x="4" y="62" fill="#8aa4c8" font-family="DejaVu Sans, sans-serif" font-size="27">XFCE · Chrome · KasmVNC · Tailscale · systemd-compatible</text>
+    <text x="4" y="62" fill="#8aa4c8" font-family="DejaVu Sans, sans-serif" font-size="27">XFCE · Chrome · KasmVNC · systemd-compatible</text>
     <rect x="4" y="100" width="620" height="3" rx="1.5" fill="#3b82f6" opacity="0.8"/>
   </g>
 
@@ -43,7 +43,7 @@
     <circle cx="74" cy="19" r="6" fill="#27c93f"/>
     <text x="30" y="82" fill="#9ece6a" font-family="DejaVu Sans Mono, monospace" font-size="21">desktop@ubuntu:~$ systemctl status</text>
     <text x="30" y="116" fill="#7aa2f7" font-family="DejaVu Sans Mono, monospace" font-size="21">● systemd compatibility layer: active (running)</text>
-    <text x="30" y="150" fill="#bb9af7" font-family="DejaVu Sans Mono, monospace" font-size="21">● Chrome · XFCE · KasmVNC · Tailscale</text>
+    <text x="30" y="150" fill="#bb9af7" font-family="DejaVu Sans Mono, monospace" font-size="21">● Chrome · XFCE · KasmVNC · D-Bus</text>
     <text x="30" y="184" fill="#e0af68" font-family="DejaVu Sans Mono, monospace" font-size="21">desktop@ubuntu:~$ _</text>
   </g>
 

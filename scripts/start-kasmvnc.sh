@@ -1,10 +1,10 @@
 #!/bin/bash
 # Launch KasmVNC as the desktop user.  The web server stays on loopback; the
-# public entrypoint is the small control page, and Tailscale Serve forwards a
-# tailnet port to this process only after the device is authenticated.
+# public entrypoint (control-server.py) is the only process that listens on the
+# public port and reverse-proxies to it.
 #
 # KasmVNC's vncserver wrapper forks Xvnc and exits (the upstream systemd unit
-# uses Type=forking).  Keep a Supervisor-visible monitor alive so a crashed
+# uses Type=forking).  Keep a foreground monitor alive so a crashed
 # Xvnc is restarted and stopasgroup can tear down the whole session.
 set -Eeuo pipefail
 
@@ -27,7 +27,7 @@ rm -f "/tmp/.X${KASM_DISPLAY}-lock" "/tmp/.X11-unix/X${KASM_DISPLAY}"
 rm -f "$HOME/.vnc/"*":${KASM_DISPLAY}.pid"
 
 # The wrapper consumes ~/.vnc/kasmvnc.yaml, written by entrypoint.sh.  A
-# separate XFCE Supervisor unit starts the window manager on the same display;
+# separate XFCE service starts the window manager on the same display;
 # -noxstartup keeps KasmVNC focused on X and the web socket.
 #
 # Loopback confinement comes from `network.interface: 127.0.0.1` in the
@@ -55,7 +55,7 @@ fi
 /usr/bin/vncserver "${args[@]}"
 
 # Wait for the X socket as well as the PID file; XFCE starts immediately after
-# Supervisor sees this process running.
+# the service manager sees this process running.
 for _ in $(seq 1 75); do
     if xdpyinfo -display ":${KASM_DISPLAY}" >/dev/null 2>&1; then
         break
@@ -91,5 +91,5 @@ while kill -0 "$xvnc_pid" 2>/dev/null; do
     sleep 2
 done
 
-echo "[kasmvnc] Xvnc exited; requesting a Supervisor restart" >&2
+echo "[kasmvnc] Xvnc exited; requesting a restart" >&2
 exit 1

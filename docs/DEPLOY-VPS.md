@@ -1,119 +1,143 @@
-# Deploying on a VPS
+# Deploy on a clean Ubuntu 24.04 VPS (real systemd)
 
-Use a VPS when you need more CPU/RAM, persistent storage, outbound internet, or
-active host swap. The image still uses Tailscale for desktop access; the public
-VPS port serves only the control page.
+This is the **real systemd** path. On a VPS, systemd is PID 1, the units in
+`vps/systemd/` are genuine unit files, and there is no Supervisor and no
+`systemctl` facade anywhere on the machine.
 
-Recommended minimum: 2 vCPU, 4 GiB RAM, 40 GiB disk, Ubuntu 24.04.
+Use it when you need real `systemctl`, `journalctl`, cgroups, timers and
+`systemd --user`, or when you want the desktop to survive reboots as a normal
+service stack.
 
-## 1. Optional: create host swap
+## Requirements
 
-If the VPS has enough disk, create swap on the **host** so every container can
-use it. Run as root from the repository:
+- Ubuntu 24.04 LTS (noble), clean install, root access.
+- 2 vCPU, 2 GB RAM, 20 GB disk minimum. 4 GB RAM is comfortable with Chrome.
+- Outbound internet during install (APT, Google Chrome, KasmVNC).
 
-```bash
-sudo SWAP_SIZE_MB=6144 bash scripts/host-swap.sh
-```
-
-Verify:
-
-```bash
-swapon --show
-free -h
-cat /proc/sys/vm/swappiness
-```
-
-The helper adds the entry to `/etc/fstab` and writes
-`/etc/sysctl.d/99-cloud-desktop-swap.conf` (`vm.swappiness=10`). Set
-`SWAP_ENABLED=0` in the container so it does not create a second file.
-
-## 2. Run the desktop container
+## Install
 
 ```bash
+apt-get update && apt-get -y install git
 git clone https://github.com/roplizeramr-blip/ubuntu-systemd-desktop.git
 cd ubuntu-systemd-desktop
 
-VNC_PW='Ch4ngeM3-strong' \
-DESKTOP_PW='Ch4ngeMe!2026' \
-TS_AUTHKEY='tskey-auth-...' \
-SWAP_ENABLED=0 \
-docker compose up -d --build
+VNC_PW='a-strong-password' \
+DESKTOP_PW='another-strong-password' \
+PUBLIC_DESKTOP=1 \
+./vps/install.sh
 ```
 
-Or plain Docker:
+Optional variables:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `VNC_USER` | `admin` | KasmVNC Basic Auth user |
+| `VNC_PW` | — | required, min 6 chars |
+| `VNC_RESOLUTION` | `1440x900` | desktop geometry |
+| `VNC_FRAME_RATE` | `30` | max fps |
+| `CONTROL_PORT` | `3000` | public port |
+| `PUBLIC_DESKTOP` | `1` | publish the desktop at `/` |
+| `DESKTOP_PW` | — | Linux password for `desktop` |
+| `ROOT_PW` | — | root password (otherwise locked) |
+| `DESKTOP_HOSTNAME` | current hostname | used on the status page |
+
+The installer:
+
+1. verifies systemd is PID 1 and the release is Ubuntu 24.04;
+2. installs XFCE, Chrome, KasmVNC 1.5.0 (SHA-256 pinned), Python and fonts;
+3. creates the `desktop` user (uid 1000, `sudo`, `ssl-cert`);
+4. writes `/etc/cloud-desktop/desktop.env` (mode 0640) and the KasmVNC
+   credential file (mode 0600);
+5. installs the units from `vps/systemd/` into `/etc/systemd/system/`;
+6. enables `cloud-desktop.target`.
+
+## What runs
+
+```
+cloud-desktop.target
+├── kasmvnc.service   User=desktop  Xvnc on :1, HTTP on 127.0.0.1:6080
+├── xfce.service      User=desktop  startxfce4 on :1
+└── control.service   root          public port, status page, reverse proxy
+```
+
+Each unit uses `Restart=always`, `KillMode=control-group`, `PAMName=login` and
+`XDG_RUNTIME_DIR=/run/user/1000`. `loginctl enable-linger desktop` gives the
+user a real `systemd --user` instance and a session bus at
+`/run/user/1000/bus`, which XFCE and KasmVNC expect.
+
+## Verify
 
 ```bash
-docker build -t ubuntu-systemd-desktop .
-
-docker run -d --name ubuntu-desktop \
-  --restart unless-stopped \
-  -p 3000:3000 \
-  --shm-size=1g \
-  -e VNC_PW='Ch4ngeM3-strong' \
-  -e DESKTOP_PW='Ch4ngeMe!2026' \
-  -e VNC_RESOLUTION='1440x900' \
-  -e VNC_FRAME_RATE='30' \
-  -e TS_AUTHKEY='tskey-auth-...' \
-  -e TS_HOSTNAME='ubuntu-vps' \
-  -e SWAP_ENABLED='0' \
-  -e TZ='Africa/Cairo' \
-  ubuntu-systemd-desktop
+systemctl status cloud-desktop.target
+systemctl status kasmvnc xfce control
+journalctl -u kasmvnc -u xfce -u control -n 50 --no-pager
+systemctl is-system-running            # running
+systemctl --user -M desktop@ status    # real user manager
 ```
-
-Open `http://<vps-ip>:3000` to link Tailscale if you did not provide an auth
-key. After the node is online, use **Open VNC** from the control page: it opens
-the Tailscale MagicDNS link (`https://<host>.<tailnet>.ts.net/`). For that to
-work, enable MagicDNS and HTTPS certificates for the tailnet. Alternatively set
-`TS_SERVE_HTTP_PORT=3000` to use `http://<tailscale-ip>:3000/` from a device on
-the tailnet.
-
-If you expose port `3000` to the internet, put Caddy/Nginx/Traefik with TLS in
-front of it. Never expose KasmVNC port `6080`; it is bound to loopback.
-
-## 3. Persist data and Tailscale state (optional)
 
 ```bash
-docker run ... \
-  -v /srv/ubuntu-desktop/home:/home/desktop \
-  -v /srv/ubuntu-desktop/tailscale:/var/lib/tailscale \
-  ubuntu-systemd-desktop
+curl -sI http://127.0.0.1:3000/healthz
+curl -s  http://127.0.0.1:3000/api/status
 ```
 
-Persisting `/var/lib/tailscale` keeps the node authenticated across redeploys.
-Without it, use `TS_AUTHKEY` or approve a fresh login link.
+Open `http://<server-ip>:3000/` and sign in with `VNC_USER` / `VNC_PW`.
 
-## 4. Verify
+## TLS
+
+The control port is plain HTTP. Put a TLS terminator in front of it:
+
+**Caddy** (automatic certificates):
 
 ```bash
-curl -fsS http://127.0.0.1:3000/healthz
-docker exec ubuntu-desktop supervisorctl status
-docker exec ubuntu-desktop pgrep -a Xvnc
-docker exec ubuntu-desktop tailscale status
-docker exec ubuntu-desktop tailscale serve status
-docker exec ubuntu-desktop free -h
+apt-get install -y caddy
+cat > /etc/caddy/Caddyfile <<'EOF'
+desktop.example.com {
+    reverse_proxy 127.0.0.1:3000
+}
+EOF
+systemctl reload caddy
 ```
 
-The swap status file is `/run/desktop-swap-status.json` inside the container.
-With host swap and `SWAP_ENABLED=0`, check `swapon --show` on the host instead.
+KasmVNC's WebSocket upgrade is forwarded by Caddy without extra configuration.
+With nginx add `proxy_set_header Upgrade $http_upgrade;` and
+`proxy_set_header Connection "upgrade";`.
 
-## 5. Performance notes
+## Operations
 
-- Keep the default `1440x900`; lower it to `1280x800` on a slow link.
-- `VNC_FRAME_RATE=30` is the default; lower it to `20` if CPU/bandwidth is tight.
-- KasmVNC chooses adaptive JPEG/WebP encoding; there is no noVNC quality query
-  string to tune.
-- `SWAP_SPARSE=0` on a VPS creates a fully allocated file; a sparse file can be
-  rejected by the kernel with “Swapfile has holes”.
-- The desktop is CPU-rendered; a VPS with 2 vCPU is enough for XFCE + one
-  Chrome window. More vCPUs help browser workloads, not VNC encoding.
+```bash
+systemctl restart cloud-desktop.target   # restart the whole desktop
+systemctl restart xfce                   # restart only the session
+systemctl stop cloud-desktop.target      # stop everything
+journalctl -u control -f                 # follow one unit
+```
 
-## 6. Security
+Credentials live in `/etc/cloud-desktop/desktop.env` (KasmVNC user and
+resolution) and `/home/desktop/.kasmpasswd` (hashed password). To change the
+VNC password, rerun the credential step:
 
-- Use a strong, unique `VNC_PW` and keep `VNC_AUTH=1`.
-- Set `DESKTOP_PW` and `TS_AUTHKEY` only in the private environment; never commit
-  them.
-- Use a firewall; expose only the public control port if remote bootstrap is
-  needed.
-- Tailscale is the network boundary, but it is not a substitute for the VNC
-  password. Treat the tailnet as trusted infrastructure.
-- The container's data is ephemeral unless you mount a volume.
+```bash
+read -rsp 'New VNC password: ' P; echo
+printf '%s\n%s\n' "$P" "$P" | runuser -u desktop -- env HOME=/home/desktop \
+    vncpasswd -u admin -w
+systemctl restart kasmvnc
+```
+
+## Updating
+
+```bash
+cd ubuntu-systemd-desktop && git pull
+./vps/install.sh          # idempotent: packages, files, units, then restart
+```
+
+The installer keeps `/etc/cloud-desktop/desktop.env` and
+`/home/desktop/.kasmpasswd` unless you pass `VNC_PW` again.
+
+## Notes
+
+- This path was written for and reviewed against Ubuntu 24.04, but it has not been
+  executed on a live VPS in this repository's CI. Run it on a disposable
+  machine first and report failures.
+- The container image and this native install share the same `scripts/` and
+  `web/` directories; only the supervision layer differs.
+- On a VPS you can safely delete `systemd/` (the compatibility layer) — it is
+  only used by the container image.

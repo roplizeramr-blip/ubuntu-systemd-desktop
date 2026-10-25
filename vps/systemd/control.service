@@ -1,0 +1,18 @@
+[Unit]
+Description=Cloud desktop control page and reverse proxy
+Documentation=file:///opt/desktop/web/index.html
+After=network-online.target kasmvnc.service
+Wants=network-online.target kasmvnc.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/cloud-desktop/desktop.env
+Environment=HOME=/root
+Environment=KASM_HOST=127.0.0.1
+ExecStart=/usr/bin/python3 /usr/local/bin/control-server.py
+Restart=always
+RestartSec=2
+KillMode=control-group
+
+[Install]
+WantedBy=cloud-desktop.target

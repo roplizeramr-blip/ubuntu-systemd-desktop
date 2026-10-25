@@ -1,8 +1,8 @@
 [Unit]
-Description=Public control page and Tailscale login helper
+Description=Public control page and desktop reverse proxy
 Documentation=file:///opt/desktop/web/index.html
-After=kasmvnc.service tailscaled.service
-Wants=kasmvnc.service tailscaled.service
+After=kasmvnc.service
+Wants=kasmvnc.service
 
 [Service]
 Type=simple

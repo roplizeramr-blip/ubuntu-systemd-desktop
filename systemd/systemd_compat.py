@@ -73,7 +73,7 @@ SUPERVISOR_SOCK = "unix:///run/supervisor.sock"
 LOG_DIR = Path("/var/log/supervisor")
 DYNAMIC_DIR = Path("/usr/local/lib/systemd-compat")
 SYSTEMD_VERSION = "255"
-SYSTEMD_PACKAGE_VERSION = "255.4-1ubuntu8.10"
+SYSTEMD_PACKAGE_VERSION = "257.13-1~deb13u1"
 BOOT_TIME_FILE = Path("/run/systemd/system/boot-time")
 STATUS_CACHE_TTL = 0.5
 _STATUS_CACHE: dict[str, dict[str, Any]] | None = None
@@ -86,8 +86,6 @@ CORE_UNITS: dict[str, str] = {
     "kasmvnc.service": "kasmvnc",
     "xfce.service": "xfce",
     "control.service": "control",
-    "tailscaled.service": "tailscaled",
-    "tailscale-serve.service": "tailscale-serve",
 }
 CORE_PROGRAMS = set(CORE_UNITS.values())
 
@@ -111,8 +109,6 @@ TARGET_DEPS: dict[str, list[str]] = {
         "kasmvnc.service",
         "xfce.service",
         "control.service",
-        "tailscaled.service",
-        "tailscale-serve.service",
     ],
     "multi-user.target": [
         "dbus.service",
