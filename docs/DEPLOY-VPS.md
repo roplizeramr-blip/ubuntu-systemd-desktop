@@ -56,7 +56,7 @@ The installer:
 ```
 cloud-desktop.target
 ├── kasmvnc.service   User=desktop  Xvnc on :1, HTTP on 127.0.0.1:6080
-├── xfce.service      User=desktop  startxfce4 on :1
+├── xfce.service      User=desktop  start-xfce.sh on :1 (xfwm4 + panel)
 └── control.service   root          public port, status page, reverse proxy
 ```
 

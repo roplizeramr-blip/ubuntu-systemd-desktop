@@ -55,12 +55,13 @@ apt-get install -y --no-install-recommends \
     dbus dbus-x11 gnome-keyring \
     python3 python3-dbus python3-gi gir1.2-glib-2.0 \
     ssl-cert earlyoom \
-    xfce4 xfce4-terminal xfce4-screenshooter xfce4-taskmanager xfce4-appfinder \
+    xfwm4 xfce4-panel xfce4-settings xfconf xfce4-terminal \
+    xfce4-screenshooter xfce4-taskmanager xfce4-appfinder \
     thunar mousepad ristretto \
     x11-utils x11-xserver-utils x11-xkb-utils xauth xdg-utils desktop-file-utils \
     xfonts-base xfonts-utils adwaita-icon-theme \
     fonts-dejavu-core fonts-noto-core fonts-noto-color-emoji fonts-liberation \
-    librsvg2-common
+    librsvg2-common librsvg2-bin feh
 
 log "Installing Google Chrome"
 install -d -m 0755 /etc/apt/keyrings
@@ -121,6 +122,10 @@ install -m 0755 "$REPO_DIR"/scripts/*.sh /usr/local/bin/
 install -m 0755 "$REPO_DIR/scripts/control-server.py" /usr/local/bin/control-server.py
 install -m 0644 "$REPO_DIR"/web/*.html /opt/desktop/web/
 install -m 0644 "$REPO_DIR/desktop/wallpaper.svg" /usr/share/backgrounds/ubuntu-cloud.svg
+# The lean session paints the wallpaper once with feh, which needs a raster
+# image; render it here instead of running a backdrop daemon.
+rsvg-convert -w 1920 -h 1080 /usr/share/backgrounds/ubuntu-cloud.svg \
+    -o /usr/share/backgrounds/desktop.png
 install -m 0644 "$REPO_DIR"/desktop/applications/*.desktop /opt/desktop/applications/
 install -m 0644 "$REPO_DIR"/tests/*.sh /opt/desktop/tests/ 2>/dev/null || true
 
