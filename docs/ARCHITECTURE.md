@@ -47,8 +47,10 @@ is no nginx, no websockify and no second container.
    the KasmVNC credential file with `vncpasswd`, applies `DESKTOP_PW`/`ROOT_PW`,
    prepares `/run` and execs supervisord.
 2. KasmVNC starts Xvnc on `:1` with `-noxstartup`.
-3. `start-xfce.sh` waits for the X socket, then runs `startxfce4` inside the
-   user session bus.
+3. `start-xfce.sh` waits for the X socket, then starts `xfsettingsd`, `xfwm4`
+   and `xfce4-panel` directly on the user session bus. `xfce4-session` and
+   `xfdesktop` are not used; `setup-desktop.sh` paints the wallpaper once with
+   `feh`.
 4. `setup-desktop.sh` applies the wallpaper, disables compositing, animations,
    screensaver and power management, and starts Chrome on the welcome page.
 5. The control server starts and `/healthz` flips to 200.

@@ -17,21 +17,16 @@ export NO_AT_BRIDGE="1"
 export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
 export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
 export GTK_A11Y="${GTK_A11Y:-none}"
-# Chrome is always started through /usr/local/bin/google-chrome, which adds the
-# container-friendly flags; see scripts/google-chrome-wrapper.sh and
-# CHROME_NO_SANDBOX in the image environment.
 
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 0700 "$XDG_RUNTIME_DIR" 2>/dev/null || true
 
 unset SESSION_MANAGER
 # The session bus lives at $XDG_RUNTIME_DIR/bus, provided by the user manager
-# (systemd --user) or by the container's user-dbus program.  systemd-user aware tools (busctl --user,
-# `systemctl --user`, ...) look for org.freedesktop.systemd1 there, and
-# dbus-run-session would start a private bus under /tmp that they cannot see.
+# (systemd --user) or by the container's user-dbus program.
 export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
 
-# The service manager starts this unit shortly after KasmVNC; allow Xvnc a few seconds
+# KasmVNC starts this unit shortly after the X server; allow Xvnc a few seconds
 # to create the display socket instead of burning restart attempts.
 for _ in $(seq 1 150); do
     if xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
@@ -40,19 +35,33 @@ for _ in $(seq 1 150); do
     sleep 0.2
 done
 
-# Run setup-desktop inside the same session bus as XFCE.  xfconf-query talks
-# to xfconfd over DBUS_SESSION_BUS_ADDRESS, so a program started separately
-# started separately would not see the running session.  gnome-keyring is started here as well:
-# it has to live on this bus so libsecret clients (Chromium and friends, ...)
-# find org.freedesktop.secrets, and unlocking the login keyring with the
-# desktop password keeps the "unlock keyring" dialog from appearing.  The
-# keyring file lives in $HOME, so it is created anew with each container.
+# Lean XFCE session.
+#
+# xfce4-session is intentionally not used: it pulls in a session manager, an
+# autostart daemon and xfdesktop (the backdrop process).  Here the window
+# manager, the settings daemon and the panel are started directly, and the
+# wallpaper is painted once by feh.  That removes two long-lived processes and
+# the root-window repaint loop, with the same look and the same panel.
 exec bash -c '
     if [ -n "${DESKTOP_PW:-}" ] && command -v gnome-keyring-daemon >/dev/null 2>&1; then
         printf "%s" "$DESKTOP_PW" | gnome-keyring-daemon --unlock --components=secrets >/dev/null 2>&1 || true
     fi
-    startxfce4 &
-    xfce_pid=$!
-    (sleep 2; /usr/local/bin/setup-desktop.sh) &
-    wait "$xfce_pid"
+
+    xfsettingsd >/dev/null 2>&1 &
+    xfwm4 >/dev/null 2>&1 &
+    wm_pid=$!
+    xfce4-panel >/dev/null 2>&1 &
+    panel_pid=$!
+
+    sleep 1
+    /usr/local/bin/setup-desktop.sh || true
+
+    # The session lives as long as the window manager.  If it exits, the whole
+    # process group is torn down and the service manager restarts the session.
+    while kill -0 "$wm_pid" 2>/dev/null; do
+        sleep 2
+    done
+
+    kill "$panel_pid" 2>/dev/null || true
+    exit 1
 '

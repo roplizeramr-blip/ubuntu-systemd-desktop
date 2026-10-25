@@ -46,7 +46,7 @@ RUN apt-get update \
         x11-utils x11-xserver-utils x11-xkb-utils xauth xdg-utils desktop-file-utils \
         xfonts-base xfonts-utils adwaita-icon-theme \
         fonts-dejavu-core fonts-noto-core fonts-noto-color-emoji fonts-liberation \
-        librsvg2-common \
+        librsvg2-common librsvg2-bin feh \
     && rm -rf /var/lib/apt/lists/*
 
 # Google Chrome replaces Firefox.  Ubuntu's chromium packages are snap-only and
@@ -168,6 +168,10 @@ COPY systemd/dbus/org.freedesktop.systemd1.conf /etc/dbus-1/system.d/org.freedes
 COPY systemd/dbus/org.freedesktop.login1.service /usr/share/dbus-1/system-services/org.freedesktop.login1.service
 COPY scripts/ /usr/local/bin/
 COPY desktop/wallpaper.svg /usr/share/backgrounds/ubuntu-cloud.svg
+# The lean session paints the wallpaper once with feh, which needs a raster
+# image; render the SVG at build time instead of running a backdrop daemon.
+RUN rsvg-convert -w 1920 -h 1080 /usr/share/backgrounds/ubuntu-cloud.svg \
+        -o /usr/share/backgrounds/desktop.png
 # Keep custom launchers out of /usr/share/applications so they do not replace
 # the package-provided Chrome/Thunar/Settings entries.  The package entries
 # stay in the application menu; the Arabic launchers are used on the desktop.

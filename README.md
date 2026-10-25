@@ -25,8 +25,9 @@ No Tailscale. No agent framework. No extra web server.
 - KasmVNC listens on `127.0.0.1:6080` only; the public port is the only entry.
 - Chrome, a terminal, Thunar, a screenshot tool and a task manager.
 - Arabic + US keyboard layouts (`Alt+Shift` to switch).
-- Wallpaper-only desktop (no backdrop icons) to cut repaints. Set
-  `DESKTOP_ICONS=1` to restore them.
+- Lean session: `xfwm4`, `xfsettingsd` and `xfce4-panel` are started directly.
+  There is no `xfce4-session` and no `xfdesktop`; the wallpaper is painted once
+  with `feh`, so nothing keeps repainting the root window.
 - Optional swap file, off by default.
 - A systemd-compatible CLI layer (`systemctl`, `journalctl`, `hostnamectl`, …)
   backed by Supervisor, so desktop software that checks those interfaces works.
@@ -71,7 +72,6 @@ the status page moves to `/status`.
 | `PUBLIC_DESKTOP` | `0` | `1` publishes the desktop at `/` |
 | `DESKTOP_PW` | — | Linux password for `desktop` |
 | `ROOT_PW` | — | root password (otherwise locked) |
-| `DESKTOP_ICONS` | `0` | `1` restores backdrop icons |
 | `CHROME_AUTOSTART` | `1` | `0` skips the welcome page on login |
 | `CHROME_NO_SANDBOX` | `1` | container-friendly Chrome flags |
 | `SWAP_ENABLED` | `0` | create a swap file at start |

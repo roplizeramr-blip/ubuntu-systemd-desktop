@@ -65,7 +65,8 @@ runuser -u desktop -- env HOME=/home/desktop DISPLAY=:1 \
   xfconf-query -c xfce4-desktop -p /desktop-icons/style
 ```
 
-Expect `0` (no backdrop icons). Set `DESKTOP_ICONS=1` to re-enable them.
+Expect `0`. The lean session no longer runs a backdrop daemon, so
+`pgrep -x xfdesktop` returns nothing and `xfce4-session` is absent.
 
 ```bash
 runuser -u desktop -- env HOME=/home/desktop DISPLAY=:1 \
