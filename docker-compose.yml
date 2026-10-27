@@ -3,29 +3,29 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ubuntu-systemd-desktop:local
-    container_name: ubuntu-systemd-desktop
-    hostname: ubuntu-desktop
+    image: debian-systemd-desktop:local
+    container_name: debian-systemd-desktop
+    hostname: debian-desktop
     restart: unless-stopped
     stop_grace_period: 30s
     ports:
       - "3000:3000"
     shm_size: "1gb"
     environment:
-      KASM_PORT: "${KASM_PORT:-6080}"
-      CONTROL_PORT: "${CONTROL_PORT:-3000}"
-      VNC_RESOLUTION: "${VNC_RESOLUTION:-1440x900}"
+      PORT: "${PORT:-3000}"
+      CONTROL_PORT: "${CONTROL_PORT:-3001}"
+      WS_PORT: "${WS_PORT:-6080}"
+      VNC_PORT: "${VNC_PORT:-5901}"
+      VNC_RESOLUTION: "${VNC_RESOLUTION:-1280x720}"
       VNC_PW: "${VNC_PW:?Set VNC_PW in .env or the shell}"
       VNC_USER: "${VNC_USER:-admin}"
       VNC_AUTH: "${VNC_AUTH:-1}"
-      VNC_FRAME_RATE: "${VNC_FRAME_RATE:-30}"
       DESKTOP_PW: "${DESKTOP_PW:-}"
-      PUBLIC_DESKTOP: "${PUBLIC_DESKTOP:-0}"
+      PUBLIC_DESKTOP: "${PUBLIC_DESKTOP:-1}"
       SWAP_ENABLED: "${SWAP_ENABLED:-0}"
       SWAP_SIZE_MB: "${SWAP_SIZE_MB:-6144}"
       SWAP_SPARSE: "${SWAP_SPARSE:-1}"
       TZ: "${TZ:-Africa/Cairo}"
-      SYSTEMD_DETECT_VIRT: "${SYSTEMD_DETECT_VIRT:-none}"
       HIDE_CONTAINER: "${HIDE_CONTAINER:-0}"
     healthcheck:
       test: ["CMD", "/usr/local/bin/healthcheck.sh"]

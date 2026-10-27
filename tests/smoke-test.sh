@@ -1,11 +1,16 @@
 #!/bin/bash
 # Run inside the running container:
 #   docker compose exec desktop /opt/desktop/tests/smoke-test.sh
+#
+# The container runs the lean stack: TigerVNC (X server) + websockify + noVNC
+# behind nginx, with XFCE started directly (no session manager, no backdrop
+# daemon).  Everything in the old KasmVNC stack must be gone.
 set -u
 
 PASS=0
 FAIL=0
-PORT="${CONTROL_PORT:-${PORT:-3000}}"
+PUBLIC_PORT="${PORT:-3000}"
+CONTROL_PORT_INTERNAL="${CONTROL_PORT:-3001}"
 
 check() {
     local label="$1"
@@ -34,59 +39,77 @@ check_contains() {
 }
 
 echo "== Ubuntu Cloud Desktop smoke test =="
-check "systemctl exists" command -v systemctl
-check "systemctl --version" systemctl --version
-check "/run/systemd/system exists" test -d /run/systemd/system
-check "PID 1 is named systemd" bash -c '[ "$(ps -p 1 -o comm= | tr -d " ")" = "systemd" ]'
-check "system is running" bash -c '[ "$(systemctl is-system-running)" = "running" ]'
-check "kasmvnc is active" bash -c '[ "$(systemctl is-active kasmvnc.service)" = "active" ]'
-check "xfce is active" bash -c '[ "$(systemctl is-active xfce.service)" = "active" ]'
-check "control page is active" bash -c '[ "$(systemctl is-active control.service)" = "active" ]'
-check "detect-virt reports none" bash -c '[ "$(systemd-detect-virt)" = "none" ]'
-check_contains "hostnamectl reports Ubuntu" "Ubuntu" hostnamectl
-check_contains "systemctl list-units includes kasmvnc" "kasmvnc.service" systemctl list-units --type=service --no-pager
+
+# ----------------------------------------------------------------- software
 check_contains "Google Chrome is installed" "Google Chrome" google-chrome --version
-check "Node.js is installed" node --version
-check "npm is installed" npm --version
-check "Python 3.15 is installed" python3.15 --version
-check "D-Bus manager is introspectable" bash -c 'busctl --system introspect org.freedesktop.systemd1 /org/freedesktop/systemd1 >/dev/null 2>&1'
+check "noVNC bundle exists" test -d /usr/share/novnc
+check "websockify is installed" command -v websockify
+check "TigerVNC is installed" test -x /usr/bin/Xtigervnc
+check "nginx is installed" test -x /usr/sbin/nginx
 
-# KasmVNC is loopback-only and requires Basic Auth by default.
-check "Xvnc is running" pgrep -x Xvnc
-check "KasmVNC config exists" test -s /home/desktop/.vnc/kasmvnc.yaml
-check "KasmVNC credentials exist" test -s /home/desktop/.kasmpasswd
-check "KasmVNC is listening on loopback" bash -c 'code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 4 http://127.0.0.1:6080/); [ "$code" = "401" ]'
-if [ "${VNC_AUTH:-1}" != "0" ] && [ -n "${VNC_PW:-}" ]; then
-    check "KasmVNC Basic Auth accepts VNC_PW" curl -fsS --max-time 5 -u "${VNC_USER:-admin}:${VNC_PW}" http://127.0.0.1:6080/ >/dev/null
-fi
+# ----------------------------------------------------------------- processes
+check "Xtigervnc is running" pgrep -x Xtigervnc
+check "websockify is running" pgrep -x websockify
+check "nginx is running" pgrep -x nginx
+check "XFCE panel is running" pgrep -x xfce4-panel
+check "Window manager (xfwm4) is running" pgrep -x xfwm4
+check "Settings daemon (xfsettingsd) is running" pgrep -x xfsettingsd
+check "Session bus is running" pgrep -x dbus-daemon
 
-# Public control plane.
+# Lean session: these two must NOT be running.
+check "no xfce4-session" bash -c '! pgrep -x xfce4-session >/dev/null 2>&1'
+check "no xfdesktop" bash -c '! pgrep -x xfdesktop >/dev/null 2>&1'
+
+# Xfwm4 must be the actual window manager on :1.
+check_contains "window manager is xfwm4" "xfwm4" \
+    bash -c 'DISPLAY=:1 xprop -root _NET_SUPPORTING_WM_CHECK >/dev/null 2>&1 || exit 1'
+check "wallpaper raster exists" test -s /usr/share/backgrounds/desktop.png
+
+# ----------------------------------------------------------------- endpoints
 for _ in $(seq 1 30); do
-    curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/healthz" >/dev/null 2>&1 && break
+    curl -fsS --max-time 3 "http://127.0.0.1:${PUBLIC_PORT}/healthz" >/dev/null 2>&1 && break
     sleep 1
 done
-check "health endpoint" curl -fsS --max-time 5 "http://127.0.0.1:${PORT}/healthz"
-check "control page is served" curl -fsS --max-time 5 "http://127.0.0.1:${PORT}/" >/tmp/control-page.html
-check_contains "control page has Open desktop" "Open desktop" cat /tmp/control-page.html
-check_contains "control page names KasmVNC" "KasmVNC" cat /tmp/control-page.html
-check "status API is valid JSON" bash -c "curl -fsS --max-time 5 http://127.0.0.1:${PORT}/api/status | python3 -m json.tool >/dev/null"
-check_contains "status API reports KasmVNC" '"engine":"KasmVNC"' curl -fsS --max-time 5 "http://127.0.0.1:${PORT}/api/status"
+check "health endpoint" curl -fsS --max-time 5 "http://127.0.0.1:${PUBLIC_PORT}/healthz"
 
-# The removed stack must not come back.
+if [ -n "${VNC_PW:-}" ]; then
+    check "public port requires auth" \
+        bash -c "[ \"\$(curl -s -o /dev/null -w '%{http_code}' --max-time 4 http://127.0.0.1:${PUBLIC_PORT}/vnc.html)\" = '401' ]"
+    check "public port accepts VNC_PW" \
+        curl -fsS --max-time 6 -u "${VNC_USER:-admin}:${VNC_PW}" "http://127.0.0.1:${PUBLIC_PORT}/vnc.html"
+fi
+
+check "internal control server is loopback-only" \
+    curl -fsS --max-time 5 "http://127.0.0.1:${CONTROL_PORT_INTERNAL}/api/status"
+check "status API is valid JSON" \
+    bash -c "curl -fsS --max-time 5 http://127.0.0.1:${CONTROL_PORT_INTERNAL}/api/status | python3 -m json.tool >/dev/null"
+check_contains "status API reports TigerVNC + noVNC" '"engine":"TigerVNC + noVNC"' \
+    curl -fsS --max-time 5 "http://127.0.0.1:${CONTROL_PORT_INTERNAL}/api/status"
+check "status API has no tailscale key" \
+    bash -c '! curl -fsS --max-time 5 "http://127.0.0.1:'${CONTROL_PORT_INTERNAL}'/api/status" | grep -q tailscale'
+
+check_contains "status page is served" "Open desktop" \
+    curl -fsS --max-time 5 "http://127.0.0.1:${PUBLIC_PORT}/status"
+
+# noVNC WebSocket endpoint must answer 101 on the public port.
+check_contains "websocket upgrade answers 101" "101" \
+    curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+        -H "Connection: Upgrade" -H "Upgrade: websocket" \
+        -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+        -u "${VNC_USER:-admin}:${VNC_PW}" "http://127.0.0.1:${PUBLIC_PORT}/websockify"
+
+# ----------------------------------------------------------------- removed
 check "Tailscale is absent" bash -c '! command -v tailscale >/dev/null 2>&1'
 check "no tailscaled process" bash -c '! pgrep -x tailscaled >/dev/null 2>&1'
 check "Hermes is absent" bash -c '[ ! -e /home/desktop/.hermes ] && ! command -v hermes >/dev/null 2>&1'
+check "KasmVNC is not installed" bash -c '[ ! -x /usr/bin/vncserver ]'
+check "VNC frame-rate env is unused" bash -c '[ -z "${VNC_FRAME_RATE:-}" ]'
 
-# Old stack should not be present.
-check "noVNC directory is absent" bash -c '[ ! -d /usr/share/novnc ]'
-check "TigerVNC package is absent" bash -c '! dpkg-query -W -f="\${Status}" tigervnc-standalone-server 2>/dev/null | grep -q "install ok installed"'
-
-# Performance helpers.
+# ----------------------------------------------------------------- helpers
 check "earlyoom is running" pgrep -x earlyoom
 check "system dashboard launcher exists" test -f /home/desktop/Desktop/system-dashboard.desktop
 check "host swap helper is executable" test -x /usr/local/bin/host-swap.sh
 
-# Swap is opt-in.  Only verify the status file when it was requested.
 if [ "${SWAP_ENABLED:-0}" = "1" ]; then
     for _ in $(seq 1 30); do
         [ -s /run/desktop-swap-status.json ] && break
@@ -101,7 +124,7 @@ if swapon --show=NAME --noheadings 2>/dev/null | grep -q .; then
     echo "PASS  active swap is available"
     PASS=$((PASS + 1))
 else
-    echo "INFO  swap is not active (expected on CranL)"
+    echo "INFO  swap is not active (swap is opt-in)"
 fi
 
 echo

@@ -18,8 +18,8 @@
   <rect width="1920" height="1080" fill="url(#grid)"/>
 
   <g transform="translate(120, 150)">
-    <text x="0" y="0" fill="#e6edf7" font-family="DejaVu Sans, sans-serif" font-size="76" font-weight="700">Ubuntu Cloud Desktop</text>
-    <text x="4" y="62" fill="#8aa4c8" font-family="DejaVu Sans, sans-serif" font-size="27">XFCE Â· Chrome Â· KasmVNC Â· systemd-compatible</text>
+    <text x="0" y="0" fill="#e6edf7" font-family="DejaVu Sans, sans-serif" font-size="76" font-weight="700">Debian Cloud Desktop</text>
+    <text x="4" y="62" fill="#8aa4c8" font-family="DejaVu Sans, sans-serif" font-size="27">XFCE · Chrome · noVNC · systemd-compatible</text>
     <rect x="4" y="100" width="620" height="3" rx="1.5" fill="#3b82f6" opacity="0.8"/>
   </g>
 
@@ -41,11 +41,11 @@
     <circle cx="30" cy="19" r="6" fill="#ff5f56"/>
     <circle cx="52" cy="19" r="6" fill="#ffbd2e"/>
     <circle cx="74" cy="19" r="6" fill="#27c93f"/>
-    <text x="30" y="82" fill="#9ece6a" font-family="DejaVu Sans Mono, monospace" font-size="21">desktop@ubuntu:~$ systemctl status</text>
-    <text x="30" y="116" fill="#7aa2f7" font-family="DejaVu Sans Mono, monospace" font-size="21">â— systemd compatibility layer: active (running)</text>
-    <text x="30" y="150" fill="#bb9af7" font-family="DejaVu Sans Mono, monospace" font-size="21">â— Chrome Â· XFCE Â· KasmVNC Â· D-Bus</text>
-    <text x="30" y="184" fill="#e0af68" font-family="DejaVu Sans Mono, monospace" font-size="21">desktop@ubuntu:~$ _</text>
+    <text x="30" y="82" fill="#9ece6a" font-family="DejaVu Sans Mono, monospace" font-size="21">admin@ubuntu:~$ supervisorctl status</text>
+    <text x="30" y="116" fill="#7aa2f7" font-family="DejaVu Sans Mono, monospace" font-size="21">? service layer: active (running)</text>
+    <text x="30" y="150" fill="#bb9af7" font-family="DejaVu Sans Mono, monospace" font-size="21">? Chrome · XFCE · noVNC · D-Bus</text>
+    <text x="30" y="184" fill="#e0af68" font-family="DejaVu Sans Mono, monospace" font-size="21">admin@ubuntu:~$ _</text>
   </g>
 
-  <text x="120" y="1030" fill="#597699" font-family="DejaVu Sans, sans-serif" font-size="18">Lightweight cloud workstation Â· built for CranL</text>
+  <text x="120" y="1030" fill="#597699" font-family="DejaVu Sans, sans-serif" font-size="18">Lightweight cloud workstation · built for CranL</text>
 </svg>

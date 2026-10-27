@@ -1,4 +1,0 @@
-[Unit]
-Description=Basic System
-Documentation=man:systemd.special(7)
-AllowIsolate=yes

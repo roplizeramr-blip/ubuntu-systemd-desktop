@@ -1,7 +1,0 @@
-[Unit]
-Description=Graphical Interface
-Documentation=man:systemd.special(7)
-Requires=multi-user.target
-Wants=kasmvnc.service xfce.service control.service
-After=multi-user.target kasmvnc.service
-AllowIsolate=yes

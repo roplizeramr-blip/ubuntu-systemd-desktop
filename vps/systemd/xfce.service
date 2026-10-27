@@ -1,7 +1,7 @@
 [Unit]
 Description=XFCE desktop session on :1
-After=kasmvnc.service
-Requires=kasmvnc.service
+After=vnc.service
+Requires=vnc.service
 
 [Service]
 Type=simple

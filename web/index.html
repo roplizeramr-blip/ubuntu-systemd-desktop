@@ -149,7 +149,7 @@
         <div class="logo" aria-hidden="true">▣</div>
         <div>
           <h1 id="app-name">Cloud Desktop</h1>
-          <p class="sub">KasmVNC</p>
+          <p class="sub">noVNC</p>
         </div>
       </div>
       <div class="pill" id="pill" role="status" aria-live="polite">
@@ -165,7 +165,7 @@
 
     <section class="stats" aria-label="Status">
       <div class="stat"><label>Desktop</label><b id="s-desktop">Checking…</b></div>
-      <div class="stat"><label>Engine</label><b id="s-engine">KasmVNC</b></div>
+      <div class="stat"><label>Engine</label><b id="s-engine">TigerVNC + noVNC</b></div>
       <div class="stat"><label>Resolution</label><b id="s-res">—</b></div>
     </section>
 
@@ -207,7 +207,7 @@
         const url = (status.urls || {}).open || "";
 
         $("s-desktop").textContent = d.running ? "Running" : "Starting";
-        $("s-engine").textContent = d.engine || "KasmVNC";
+        $("s-engine").textContent = d.engine || "TigerVNC + noVNC";
         $("s-res").textContent = d.resolution || "—";
         $("f-user").textContent = d.user || "admin";
         $("f-time").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -226,7 +226,7 @@
           say("The desktop is still starting. This page refreshes automatically.");
         } else {
           pillState("Not published", "bad");
-          say("The desktop is running but PUBLIC_DESKTOP is off, so there is no public URL to open.");
+          say("The desktop is running but is not published on this port.");
         }
       }
 

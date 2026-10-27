@@ -1,28 +1,39 @@
 سطح مكتب Ubuntu على السحابة
 ============================
 
-Ubuntu 24.04 + XFCE + Google Chrome، يُعرض في المتصفح عبر KasmVNC.
+Ubuntu 24.04 + XFCE + Google Chrome، يُعرض في المتصفح عبر noVNC.
 بدون Tailscale وبدون أي وكيل ذكاء اصطناعي.
+
+الحزمة الجديدة (أخف بكثير):
+----------------------------
+- TigerVNC هو خادم X (عملية واحدة، RFB على 127.0.0.1 فقط).
+- noVNC + websockify: المتصفح يفُكّ الترميز، فالخادم لا يدفع ثمن الترميز.
+- nginx هو المنفذ العام الوحيد: المصادقة، صفحة الحالة، وتمرير WebSocket
+  بنفق nginx نفسه (لا سوكيت Python في المسار) فلا ينقطع الاتصال.
+- سبع خدمات فقط تحت Supervisor: dbus, vnc, websockify, xfce, nginx,
+  control, earlyoom.
+- لا KasmVNC، ولا محاكاة systemd داخل الحاوية.
 
 المستودع:
 https://github.com/roplizeramr-blip/ubuntu-systemd-desktop
 
-خطوات النشر على CranL
----------------------
+خطوات النشر
+-----------
 1. ارفع المستودع إلى GitHub.
-2. في CranL أنشئ تطبيقاً من المستودع:
+2. أنشئ تطبيقاً من المستودع:
    - Build: Dockerfile
    - Port: 3000
    - Health: /healthz
-   - Region: netherlands-1
 3. أضف متغيرات البيئة:
-   CONTROL_PORT=3000
+   PORT=3000
+   CONTROL_PORT=3001
+   WS_PORT=6080
+   VNC_PORT=5901
    VNC_USER=admin
    VNC_PW=<كلمة سر قوية 6 أحرف على الأقل>
    DESKTOP_PW=<كلمة سر حساب لينكس>
    ROOT_PW=<كلمة سر root>            # اختياري
-   VNC_RESOLUTION=1440x900
-   VNC_FRAME_RATE=30
+   VNC_RESOLUTION=1280x720
    VNC_AUTH=1
    PUBLIC_DESKTOP=1
    TZ=Africa/Cairo
@@ -30,12 +41,9 @@ https://github.com/roplizeramr-blip/ubuntu-systemd-desktop
    SWAP_ENABLED=0
 4. اضغط Deploy وانتظر انتهاء البناء.
 5. افتح رابط التطبيق:
-   - /        → سطح المكتب (يسأل عن VNC_USER / VNC_PW)
+   - /        → سطح المكتب (يسأل عن VNC_USER / VNC_PW، يتصل تلقائياً)
    - /status  → صفحة الحالة
    - /healthz → فحص الصحة
-
-ملاحظة: git push يبني الصورة لكنه لا يستبدل الحاوية العاملة،
-لازم تعمل Deploy بعد البناء.
 
 بيانات الدخول
 -------------
@@ -49,16 +57,17 @@ Linux password: الذي تحدده في DESKTOP_PW
 
 ملاحظات مهمة
 ------------
-- KasmVNC يستمع على 127.0.0.1:6080 فقط؛ المنفذ العام الوحيد هو 3000.
-- systemd داخل الحاوية محاكاة فوق Supervisor، وليست systemd حقيقية.
-- systemd الحقيقية تحتاج VPS/VM — راجع docs/DEPLOY-VPS.md.
+- مقبس سطح المكتب على 127.0.0.1:5901 فقط؛ nginx هو المدخل العام الوحيد.
+- Xtigervnc يعمل بـ noreset وwebsockify بـ heartbeat: إعادة تحميل الصفحة أو
+  نوم الجهاز لا تقطعان الجلسة.
+- systemd الحقيقية تحتاج VPS/VM — راجع docs/DEPLOY-VPS.md:
+  VNC_PW='كلمة سر' ./vps/install.sh
 - الملفات داخل الحاوية وتضيع عند إعادة النشر.
 - الصورة بلا GPU: Chrome يعمل بمحرك رسم برمجي.
 
 مزيد من التفاصيل
 ----------------
 README.md
-docs/DEPLOY-CRANL.md
-docs/DEPLOY-VPS.md
 docs/ARCHITECTURE.md
+docs/DEPLOY-VPS.md
 docs/TESTING.md

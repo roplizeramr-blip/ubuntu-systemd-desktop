@@ -1,7 +1,0 @@
-[Unit]
-Description=Multi-User System
-Documentation=man:systemd.special(7)
-Requires=basic.target
-Wants=dbus.service systemd-journald.service systemd-dbus.service
-After=basic.target dbus.service
-AllowIsolate=yes

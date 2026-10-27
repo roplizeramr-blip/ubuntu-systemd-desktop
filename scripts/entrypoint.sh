@@ -1,30 +1,33 @@
 #!/bin/bash
+# Container entrypoint.
+#
+# Responsibilities: prepare the runtime directories, turn VNC_PW into an nginx
+# Basic-auth file, render the nginx configuration for the public port, apply the
+# optional Linux passwords, and hand PID 1 to Supervisor.
 set -Eeuo pipefail
 
 export VNC_PW="${VNC_PW:-}"
 export VNC_USER="${VNC_USER:-admin}"
 export VNC_AUTH="${VNC_AUTH:-1}"
-export VNC_RESOLUTION="${VNC_RESOLUTION:-1440x900}"
-export VNC_FRAME_RATE="${VNC_FRAME_RATE:-30}"
-export KASM_PORT="${KASM_PORT:-6080}"
-export KASM_DISPLAY="${KASM_DISPLAY:-1}"
-export CONTROL_PORT="${CONTROL_PORT:-${PORT:-3000}}"
+export VNC_RESOLUTION="${VNC_RESOLUTION:-1280x720}"
+export VNC_DISPLAY="${VNC_DISPLAY:-1}"
+export VNC_PORT="${VNC_PORT:-5901}"
+export WS_PORT="${WS_PORT:-6080}"
+# PORT is the public port provided by the platform; CONTROL_PORT is internal.
+export PORT="${PORT:-3000}"
+export CONTROL_PORT="${CONTROL_PORT:-3001}"
 export TZ="${TZ:-Africa/Cairo}"
-export SYSTEMD_DETECT_VIRT="${SYSTEMD_DETECT_VIRT:-none}"
 export SWAP_ENABLED="${SWAP_ENABLED:-0}"
 export SWAP_DIR="${SWAP_DIR:-/var/swap}"
 export SWAP_FILE="${SWAP_FILE:-${SWAP_DIR}/swapfile}"
 export SWAP_SIZE_MB="${SWAP_SIZE_MB:-6144}"
 export SWAP_SPARSE="${SWAP_SPARSE:-1}"
-# PUBLIC_DESKTOP=1 makes the public CranL port serve the KasmVNC desktop at /
-# (control page moves to /status).  0 keeps the public port on the lightweight
-# control page and does not expose the desktop at all.
-export PUBLIC_DESKTOP="${PUBLIC_DESKTOP:-0}"
+# PUBLIC_DESKTOP=1 publishes the desktop at "/" and the status page at /status.
+# 0 serves the status page at "/" and keeps the desktop at /vnc.html.
+export PUBLIC_DESKTOP="${PUBLIC_DESKTOP:-1}"
 
 if ! locale -a 2>/dev/null | grep -qi '^en_US\.utf8$'; then
-    export LANG="C.UTF-8"
-    export LANGUAGE="C.UTF-8"
-    export LC_ALL="C.UTF-8"
+    export LANG="C.UTF-8" LANGUAGE="C.UTF-8" LC_ALL="C.UTF-8"
 else
     export LANG="${LANG:-en_US.UTF-8}"
     export LANGUAGE="${LANGUAGE:-en_US:en}"
@@ -36,20 +39,17 @@ if [ -f "/usr/share/zoneinfo/${TZ}" ]; then
     printf '%s\n' "$TZ" > /etc/timezone
 fi
 
-# Runtime directories that systemd normally creates.  Remove sockets and X11
-# lock files left behind by a previous container run before starting fresh.
-rm -f /run/dbus/system_bus_socket /run/dbus/pid /run/supervisor.sock
-rm -f "/tmp/.X${KASM_DISPLAY}-lock" "/tmp/.X11-unix/X${KASM_DISPLAY}"
-install -d -m 0755 /run/systemd/system /run/systemd/journal /run/dbus
+# ------------------------------------------------------------------ runtime dirs
+rm -f /run/supervisor.sock /run/nginx.pid
+rm -f "/tmp/.X${VNC_DISPLAY}-lock" "/tmp/.X11-unix/X${VNC_DISPLAY}"
 install -d -m 1777 /tmp/.X11-unix
-install -d -m 0755 /var/log/supervisor /var/log/journal
+install -d -m 0755 /var/log/supervisor /var/log/nginx /run/nginx
 install -d -m 0700 -o desktop -g desktop /run/user/1000
 install -d -m 0700 -o desktop -g desktop /home/desktop/.vnc
 install -d -m 0755 -o desktop -g desktop \
     /home/desktop/.config /home/desktop/.cache /home/desktop/Desktop
 
-# Best-effort kernel memory tuning. /proc/sys is read-only in some containers;
-# a failure here must never stop the desktop from starting.
+# Best-effort kernel tuning; /proc/sys may be read-only.
 for setting in \
     "vm.swappiness=10" \
     "vm.vfs_cache_pressure=50" \
@@ -59,29 +59,22 @@ for setting in \
     sysctl -w "$setting" >/dev/null 2>&1 || true
 done
 
-echo "[desktop] KasmVNC ${VNC_RESOLUTION} on 127.0.0.1:${KASM_PORT} (display :${KASM_DISPLAY}, auth=${VNC_AUTH})"
-echo "[desktop] public port :${CONTROL_PORT} -> $(if [ "${PUBLIC_DESKTOP}" = "1" ]; then echo 'KasmVNC at / (control page at /status)'; else echo 'control page at /'; fi)"
+echo "[desktop] TigerVNC ${VNC_RESOLUTION} on 127.0.0.1:${VNC_PORT} (display :${VNC_DISPLAY})"
+echo "[desktop] noVNC/websockify 127.0.0.1:${WS_PORT}; nginx public :${PORT}"
+echo "[desktop] control API 127.0.0.1:${CONTROL_PORT}"
 echo "[desktop] swap enabled=${SWAP_ENABLED} (${SWAP_SIZE_MB} MiB at ${SWAP_FILE})"
 
-# A stable machine-id and boot timestamp make hostnamectl/journalctl useful.
+# A stable machine-id keeps applications that read it happy.
 if [ ! -s /etc/machine-id ]; then
-    if command -v systemd-machine-id-setup >/dev/null 2>&1; then
-        systemd-machine-id-setup 2>/dev/null || true
-    fi
-    if [ ! -s /etc/machine-id ]; then
-        tr -d '-' < /proc/sys/kernel/random/uuid > /etc/machine-id
-    fi
+    tr -d '-' < /proc/sys/kernel/random/uuid > /etc/machine-id 2>/dev/null || true
 fi
-date +%s > /run/systemd/system/boot-time
 
 if [ -n "${DESKTOP_HOSTNAME:-}" ]; then
     hostname "$DESKTOP_HOSTNAME" 2>/dev/null || true
     printf '%s\n' "$DESKTOP_HOSTNAME" > /etc/hostname 2>/dev/null || true
 fi
 
-# KasmVNC reads a YAML config from the user's home and a credential file with
-# one entry per named Basic Auth user.  Keep the HTTP/WebSocket listener on
-# loopback: there is no public VNC port in this image.
+# ------------------------------------------------------------------ credentials
 if [[ "$VNC_PW" == *$'\n'* ]]; then
     echo "[desktop] ERROR: VNC_PW must not contain a newline" >&2
     exit 1
@@ -100,81 +93,31 @@ case "$VNC_USER" in
         exit 1
         ;;
 esac
-case "$VNC_FRAME_RATE" in
-    ''|*[!0-9]*) VNC_FRAME_RATE=30 ;;
-esac
 
-# KasmVNC's built-in default (1024x768) is merged after the command line, so
-# the requested geometry has to live in the config file to win.  Accept only
-# WxH; anything else falls back to 1440x900.
-case "$VNC_RESOLUTION" in
-    [0-9]*x[0-9]*) VNC_WIDTH="${VNC_RESOLUTION%x*}"; VNC_HEIGHT="${VNC_RESOLUTION#*x}" ;;
-    *) VNC_WIDTH=1440; VNC_HEIGHT=900 ;;
-esac
-case "$VNC_WIDTH" in ''|*[!0-9]*) VNC_WIDTH=1440 ;; esac
-case "$VNC_HEIGHT" in ''|*[!0-9]*) VNC_HEIGHT=900 ;; esac
-
-# Ensure the KasmVNC web server can read the snakeoil certificate/key installed
-# by ssl-cert.  The image adds the user to this group; repeat it at runtime for
-# volumes or user-created images.
-if getent group ssl-cert >/dev/null 2>&1; then
-    usermod -aG ssl-cert desktop >/dev/null 2>&1 || true
-fi
-
-cat > /home/desktop/.vnc/kasmvnc.yaml <<EOF
-desktop:
-  resolution:
-    width: $VNC_WIDTH
-    height: $VNC_HEIGHT
-  allow_resize: true
-  pixel_depth: 24
-encoding:
-  max_frame_rate: ${VNC_FRAME_RATE}
-  # Software encoding on a small, shared CPU: let the encoder trade image
-  # quality for responsiveness instead of falling behind, never take the
-  # expensive lossless rectangle path, and spend less time on each WebP frame.
-  rect_encoding_mode:
-    min_quality: 4
-    max_quality: 8
-    consider_lossless_quality: 10
-  video_encoding_mode:
-    webp_encoding_time: 10
-    enter_video_encoding_mode:
-      time_threshold: 3
-      area_threshold: 40%
-  compare_framebuffer: auto
-  hextile_improved_compression: true
-network:
-  protocol: http
-  interface: 127.0.0.1
-  websocket_port: ${KASM_PORT}
-  ssl:
-    require_ssl: false
-command_line:
-  prompt: false
-EOF
-chown desktop:desktop /home/desktop/.vnc/kasmvnc.yaml
-chmod 0640 /home/desktop/.vnc/kasmvnc.yaml
-
-# KasmVNC's vncpasswd writes an obfuscated credential file, not plaintext.
-# It reads the password and its confirmation from stdin.  Always create the
-# file, even with VNC_AUTH=0, because the server refuses to start without a
-# configured user; -disableBasicAuth is applied by start-kasmvnc.sh.
-rm -f /home/desktop/.kasmpasswd
-if ! printf '%s\n%s\n' "$VNC_PW" "$VNC_PW" \
-    | runuser -u desktop -- env HOME=/home/desktop vncpasswd -u "$VNC_USER" -w; then
-    echo "[desktop] ERROR: could not create /home/desktop/.kasmpasswd" >&2
+# nginx answers the password prompt; the desktop socket stays on loopback.
+if command -v openssl >/dev/null 2>&1; then
+    HASH="$(openssl passwd -apr1 "$VNC_PW")"
+else
+    echo "[desktop] ERROR: openssl is required to hash VNC_PW" >&2
     exit 1
 fi
-chown desktop:desktop /home/desktop/.kasmpasswd
-chmod 0600 /home/desktop/.kasmpasswd
+printf '%s:%s\n' "$VNC_USER" "$HASH" > /etc/nginx/.htpasswd
+chown root:www-data /etc/nginx/.htpasswd 2>/dev/null || true
+chmod 0640 /etc/nginx/.htpasswd
 
-# Remove credentials left by the TigerVNC image; they are not used by KasmVNC.
-rm -f /home/desktop/.vnc/passwd /home/desktop/.vnc/xstartup
+# ------------------------------------------------------------------ nginx config
+sed -e "s/__PORT__/${PORT}/g" \
+    -e "s/__WS_PORT__/${WS_PORT}/g" \
+    -e "s/__CONTROL_PORT__/${CONTROL_PORT}/g" \
+    /usr/local/bin/nginx.conf.template > /etc/nginx/nginx.conf
 
-# Linux login/sudo password. Supply DESKTOP_PW from the deployment's private
-# environment so the public image and repository never bake a secret. If it is
-# absent, the account stays locked and only the VNC password is usable.
+if ! /usr/sbin/nginx -t -c /etc/nginx/nginx.conf >/var/log/nginx/config-test.log 2>&1; then
+    echo "[desktop] ERROR: nginx configuration is invalid" >&2
+    cat /var/log/nginx/config-test.log >&2 || true
+    exit 1
+fi
+
+# ------------------------------------------------------------------ optional bits
 if [ -n "${DESKTOP_PW:-}" ]; then
     if printf 'desktop:%s\n' "$DESKTOP_PW" | chpasswd 2>/dev/null; then
         usermod -U desktop 2>/dev/null || true
@@ -186,9 +129,6 @@ else
     echo "[desktop] DESKTOP_PW is not set; Linux account desktop remains locked"
 fi
 
-# Root login.  The image ships with the root account locked; supply ROOT_PW in
-# the deployment environment to set (and unlock) it at start.  Leaving it unset
-# keeps the default locked account and keeps `sudo` as the only path to root.
 if [ -n "${ROOT_PW:-}" ]; then
     if printf 'root:%s\n' "$ROOT_PW" | chpasswd 2>/dev/null; then
         echo "[desktop] root password updated from ROOT_PW"
@@ -199,20 +139,10 @@ else
     echo "[desktop] ROOT_PW is not set; root login stays locked"
 fi
 
-# /dev/log is expected by syslog-style applications.  The journald shim
-# creates the real socket at /run/systemd/journal/dev-log.
-rm -f /dev/log 2>/dev/null || true
-ln -sfn /run/systemd/journal/dev-log /dev/log 2>/dev/null || true
-
-# Swap is deliberately opt-in.  KasmVNC uses less memory than the old
-# TigerVNC/noVNC stack, and a 6 GiB file wastes disk on the small CranL plan.
-if [ "${SWAP_ENABLED:-0}" = "1" ]; then
+if [ "${SWAP_ENABLED}" = "1" ]; then
     /usr/local/bin/setup-swap.sh >/var/log/swap.log 2>&1 &
 fi
 
-# Optional compatibility switch: removing /.dockerenv makes some simple
-# container checks less noisy. It is disabled by default and is not a security
-# boundary. Set HIDE_CONTAINER=1 only if you understand that.
 if [ "${HIDE_CONTAINER:-0}" = "1" ]; then
     rm -f /.dockerenv
 fi

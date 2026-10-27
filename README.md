@@ -1,36 +1,64 @@
-# Ubuntu Cloud Desktop — KasmVNC + XFCE
+# Ubuntu Cloud Desktop — TigerVNC + noVNC + XFCE
 
-A small, fast Ubuntu 24.04 desktop you can use from a browser. KasmVNC streams a
-real XFCE X11 session over HTTPS; a tiny Python control server owns the public
-port, serves a status page and reverse-proxies HTTP and WebSocket traffic to
-KasmVNC on loopback.
+A small, fast Ubuntu 24.04 desktop you can use from a browser. TigerVNC provides
+the X server, noVNC renders it in the browser, and nginx is the only public
+listener: it terminates HTTP Basic Auth, serves the status page and proxies the
+WebSocket to the desktop.
 
-No Tailscale. No agent framework. No extra web server.
+No Tailscale. No agent framework. No KasmVNC. No Python socket pump in the
+WebSocket path.
 
 ## Stack
 
 | Layer | Choice | Why |
 |---|---|---|
-| Base | Ubuntu 24.04 LTS (noble) | current stable, small |
+| Base | Ubuntu 24.04 (trixie) | current stable, small |
 | Desktop | XFCE 4 | full session, low memory |
-| Remote | KasmVNC 1.5.0 | one HTTP/WebSocket server, adaptive encoding |
+| X server | TigerVNC (`Xtigervnc`) | single process, `-noreset`, loopback RFB |
+| Web client | noVNC + websockify | JPEG decoding in the browser, tiny server load |
+| Public port | nginx | auth, status page, native WebSocket proxy |
 | Browser | Google Chrome | from Google's APT repository |
-| Runtime | Python 3.15 + Node.js 24 LTS | pinned, checksum-verified |
-| Supervisor | supervisord | PID 1 inside the container |
-| Public port | `control-server.py` | status page + reverse proxy |
+| Runtime | Python 3 (system) | nothing else is pulled in |
+| Supervisor | supervisord | PID 1 inside the container, 7 programs |
+
+## What changed, and why
+
+KasmVNC was removed. It is one process doing X server, web server and adaptive
+encoding, which sounds lighter, but the encoder is the most expensive part on a
+container with two shared vCPUs. TigerVNC does the cheap encodings, the browser
+does the rest, and nginx owns the public socket —
+looking like a dead WebSocket and the connection stops dropping.
+
+Seven processes run under Supervisor:
+
+```
+dbus         session bus (GTK, Chrome, Thunar)
+vnc          Xtigervnc          :1  RFB on 127.0.0.1:5901
+websockify   RFB -> WebSocket   127.0.0.1:6080 + serves the noVNC bundle
+xfce         xfwm4 + xfce4-panel + xfsettingsd (no session manager)
+nginx        public port: auth, /status, WebSocket proxy
+control      /healthz and /api/status
+earlyoom     protects the 2 GiB cgroup
+```
+
+What is gone: the KasmVNC encoder, the Python reverse proxy, the `systemd`
+facade daemons (journald, D-Bus activation, user-bus bridge — about 100 MB and
+a permanent D-Bus wake-up load) and the `systemd`, Node.js and Python 3.15
+packages.
 
 ## Features
 
-- 1440x900 XFCE desktop at 30 fps by default, resizeable from the client.
-- KasmVNC listens on `127.0.0.1:6080` only; the public port is the only entry.
+- 1280x720 XFCE desktop, low noVNC quality settings, auto-resize from the client.
+- Desktop socket on `127.0.0.1:5901` only; `nginx` is the single public entry.
+- `Xtigervnc -noreset`: a laptop that sleeps, a tab that reloads, a laptop that
+  changes network — none of them kill the desktop session.
+- `websockify --heartbeat 20` and `proxy_read_timeout 7d`: no idle disconnects.
 - Chrome, a terminal, Thunar, a screenshot tool and a task manager.
 - Arabic + US keyboard layouts (`Alt+Shift` to switch).
 - Lean session: `xfwm4`, `xfsettingsd` and `xfce4-panel` are started directly.
   There is no `xfce4-session` and no `xfdesktop`; the wallpaper is painted once
   with `feh`, so nothing keeps repainting the root window.
 - Optional swap file, off by default.
-- A systemd-compatible CLI layer (`systemctl`, `journalctl`, `hostnamectl`, …)
-  backed by Supervisor, so desktop software that checks those interfaces works.
 
 ## Quick start (Docker)
 
@@ -41,35 +69,36 @@ cp .env.example .env          # then edit VNC_PW
 docker compose up -d --build
 ```
 
-Open <http://localhost:3000>. With `PUBLIC_DESKTOP=1`, `/` is the desktop and
-the status page moves to `/status`.
+Open <http://localhost:3000>. With `PUBLIC_DESKTOP=1` (the default), `/` opens
+the desktop and the status page moves to `/status`.
 
 ## Access model
 
-`PUBLIC_DESKTOP=1` (what the hosted app uses):
+`PUBLIC_DESKTOP=1`:
 
-- `https://<app-url>/` → KasmVNC, protected by HTTP Basic Auth
-  (`VNC_USER` / `VNC_PW`).
-- `https://<app-url>/status` → the lightweight status page.
-- `https://<app-url>/healthz` → `200 ok` once KasmVNC is accepting connections.
+- `https://<url>/` → noVNC, protected by HTTP Basic Auth (`VNC_USER` / `VNC_PW`),
+  opening with `autoconnect=1`, `reconnect=1`, `quality=5`.
+- `https://<url>/status` → the lightweight status page.
+- `https://<url>/healthz` → `200 ok` while the desktop is reachable.
+- `https://<url>/api/status` → JSON snapshot.
 
-`PUBLIC_DESKTOP=0` (default for local Docker):
+`PUBLIC_DESKTOP=0`:
 
-- `/` serves the status page only; the desktop is not published.
-- Reach KasmVNC from the host with `docker compose exec desktop curl ...` or by
-  adding a port mapping for `6080` yourself.
+- `/` serves the status page only; the desktop lives at `/vnc.html`.
 
 ## Environment variables
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `VNC_PW` | — (required) | KasmVNC Basic Auth password, min 6 chars |
-| `VNC_USER` | `admin` | KasmVNC Basic Auth user |
-| `VNC_AUTH` | `1` | `0` disables HTTP Basic Auth |
-| `VNC_RESOLUTION` | `1440x900` | desktop geometry |
-| `VNC_FRAME_RATE` | `30` | max frames per second |
-| `CONTROL_PORT` | `3000` | public port |
-| `PUBLIC_DESKTOP` | `0` | `1` publishes the desktop at `/` |
+| `VNC_PW` | — (required) | HTTP Basic Auth password for `/`, min 6 chars |
+| `VNC_USER` | `admin` | HTTP Basic Auth user |
+| `VNC_AUTH` | `1` | `0` allows an unauthenticated read of the public port |
+| `VNC_RESOLUTION` | `1280x720` | desktop geometry |
+| `PORT` | `3000` | public port (nginx) |
+| `CONTROL_PORT` | `3001` | internal control server (loopback) |
+| `WS_PORT` | `6080` | websockify listener (loopback) |
+| `VNC_PORT` | `5901` | TigerVNC RFB listener (loopback) |
+| `PUBLIC_DESKTOP` | `1` | `1` publishes the desktop at `/` |
 | `DESKTOP_PW` | — | Linux password for `desktop` |
 | `ROOT_PW` | — | root password (otherwise locked) |
 | `CHROME_AUTOSTART` | `1` | `0` skips the welcome page on login |
@@ -82,54 +111,30 @@ the status page moves to `/status`.
 Never commit `VNC_PW`, `DESKTOP_PW` or `ROOT_PW`. The image contains no
 credentials; the entrypoint applies them at container start.
 
-## systemd compatibility
+## Real systemd
 
-The container has no init system: supervisord is PID 1. The `systemd/` directory
-ships a compatibility layer that maps the usual systemd commands onto Supervisor
-programs:
+The container runs Supervisor as PID 1 and does **not** emulate systemd. For
+real systemd — units enabled with `systemctl enable`, `systemctl status`,
+`journalctl` — use the VPS path:
 
 ```bash
-systemctl status
-systemctl is-system-running
-systemctl list-units --type=service
-systemctl restart xfce
-journalctl -n 30
-hostnamectl
-systemd-analyze blame
+VNC_PW='strong-password' PUBLIC_DESKTOP=1 ./vps/install.sh
 ```
 
-This is a facade, not real systemd. It exists so applications that probe the
-standard interfaces behave normally. It is not a security boundary, and it
-cannot manage kernel units, cgroups or timers.
+See [`docs/DEPLOY-VPS.md`](docs/DEPLOY-VPS.md).
 
-**Real systemd requires a VM or a VPS.** See [`docs/DEPLOY-VPS.md`](docs/DEPLOY-VPS.md)
-for the native path where systemd is PID 1 and the units in `systemd/units/` are
-real unit files.
-
-## Deploy on CranL
+## Deploy anywhere Docker runs
 
 1. Push the repository to GitHub.
-2. In CranL create an app from the repository; the build uses `Dockerfile`.
-3. Set the port to `3000`, health check `/healthz`, region `netherlands-1`.
-4. Add the environment variables you need (`VNC_PW`, `DESKTOP_PW`, `ROOT_PW`,
-   `PUBLIC_DESKTOP=1`, …).
-5. Deploy, then open the app URL.
-
-A `git push` triggers a build but does not swap the running container; run a
-deploy after the build finishes.
-
-Full details: [`docs/DEPLOY-CRANL.md`](docs/DEPLOY-CRANL.md).
+2. Build the image (or use `docker compose build`).
+3. Publish port `3000`, set a health check on `/healthz`.
+4. Set the environment variables you need (`VNC_PW`, `PUBLIC_DESKTOP=1`, …).
+5. Open the app URL.
 
 ## Testing
 
 ```bash
 docker compose exec desktop /opt/desktop/tests/smoke-test.sh
-docker compose exec desktop /opt/desktop/tests/test-systemd.sh
-```
-
-Or from the host:
-
-```bash
 curl -fsS http://localhost:3000/healthz
 curl -fsS http://localhost:3000/api/status | python3 -m json.tool
 ```
@@ -142,18 +147,20 @@ See [`docs/TESTING.md`](docs/TESTING.md).
 Dockerfile              image build
 docker-compose.yml      local run
 scripts/
-  entrypoint.sh         runtime setup, credentials, kasmvnc.yaml
-  control-server.py     public port: status page + reverse proxy
-  start-kasmvnc.sh      KasmVNC/Xvnc lifecycle
-  start-xfce.sh         XFCE session
+  entrypoint.sh         runtime setup, credentials, nginx configuration
+  control-server.py     internal status page + JSON API (no proxying)
+  start-vnc.sh          Xtigervnc lifecycle
+  start-websockify.sh   RFB -> WebSocket bridge
+  start-xfce.sh         lean XFCE session
   setup-desktop.sh      XFCE, GTK and Chrome preferences
+  nginx.conf.template   public listener, rendered at start
   system-status.sh      terminal dashboard
   healthcheck.sh        container health probe
-supervisor/             supervisord programs
-systemd/                compatibility layer and unit files
+supervisor/             supervisord programs (7)
+vps/                    native install + real systemd units
 web/                    status page and welcome page
 desktop/                wallpaper and launchers
-tests/                  smoke and systemd tests
+tests/                  smoke test
 docs/                   deployment, architecture, testing
 ```
 
@@ -169,8 +176,9 @@ docs/                   deployment, architecture, testing
 - Put a strong `VNC_PW` on every public deployment.
 - Keep the app URL private; it is the only entry point.
 - Do not store secrets in the desktop home directory.
-- `PUBLIC_DESKTOP=1` exposes KasmVNC to the internet behind Basic Auth only;
-  treat the URL itself as a secret and rotate the password if it leaks.
+- `PUBLIC_DESKTOP=1` exposes the desktop behind Basic Auth only; treat the URL
+  itself as a secret, rotate the password if it leaks, and put TLS in front of
+  it for anything more than a test.
 
 ## License
 

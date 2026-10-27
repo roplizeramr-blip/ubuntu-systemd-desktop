@@ -1,4 +1,4 @@
-# Deploy on a clean Ubuntu 24.04 VPS (real systemd)
+﻿# Deploy on a clean Ubuntu 24.04 VPS (real systemd)
 
 This is the **real systemd** path. On a VPS, systemd is PID 1, the units in
 `vps/systemd/` are genuine unit files, and there is no Supervisor and no
@@ -12,7 +12,7 @@ service stack.
 
 - Ubuntu 24.04 LTS (noble), clean install, root access.
 - 2 vCPU, 2 GB RAM, 20 GB disk minimum. 4 GB RAM is comfortable with Chrome.
-- Outbound internet during install (APT, Google Chrome, KasmVNC).
+- Outbound internet during install (APT, Google Chrome, TigerVNC + noVNC).
 
 ## Install
 
@@ -31,7 +31,7 @@ Optional variables:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `VNC_USER` | `admin` | KasmVNC Basic Auth user |
+| `VNC_USER` | `admin` | HTTP Basic Auth user |
 | `VNC_PW` | — | required, min 6 chars |
 | `VNC_RESOLUTION` | `1440x900` | desktop geometry |
 | `VNC_FRAME_RATE` | `30` | max fps |
@@ -44,9 +44,9 @@ Optional variables:
 The installer:
 
 1. verifies systemd is PID 1 and the release is Ubuntu 24.04;
-2. installs XFCE, Chrome, KasmVNC 1.5.0 (SHA-256 pinned), Python and fonts;
+2. installs XFCE, Chrome, TigerVNC + noVNC + nginx, Python and fonts;
 3. creates the `desktop` user (uid 1000, `sudo`, `ssl-cert`);
-4. writes `/etc/cloud-desktop/desktop.env` (mode 0640) and the KasmVNC
+4. writes /etc/cloud-desktop/desktop.env (mode 0640) and the nginx
    credential file (mode 0600);
 5. installs the units from `vps/systemd/` into `/etc/systemd/system/`;
 6. enables `cloud-desktop.target`.
@@ -55,22 +55,23 @@ The installer:
 
 ```
 cloud-desktop.target
-├── kasmvnc.service   User=desktop  Xvnc on :1, HTTP on 127.0.0.1:6080
-├── xfce.service      User=desktop  start-xfce.sh on :1 (xfwm4 + panel)
-└── control.service   root          public port, status page, reverse proxy
-```
+ vnc.service        User=desktop  Xtigervnc :1, RFB on 127.0.0.1:5901
+ websockify.service User=desktop  noVNC bundle + WebSocket on 127.0.0.1:6080
+ xfce.service       User=desktop  start-xfce.sh on :1 (xfwm4 + panel)
+ nginx.service      root          public port: auth, status page, WebSocket proxy
+ control.service    root          /api/status and /healthz on loopback
 
 Each unit uses `Restart=always`, `KillMode=control-group`, `PAMName=login` and
 `XDG_RUNTIME_DIR=/run/user/1000`. `loginctl enable-linger desktop` gives the
 user a real `systemd --user` instance and a session bus at
-`/run/user/1000/bus`, which XFCE and KasmVNC expect.
+/run/user/1000/bus, which XFCE and noVNC expect.
 
 ## Verify
 
 ```bash
 systemctl status cloud-desktop.target
-systemctl status kasmvnc xfce control
-journalctl -u kasmvnc -u xfce -u control -n 50 --no-pager
+systemctl status vnc websockify xfce control nginx
+journalctl -u vnc -u websockify -u xfce -u control -n 50 --no-pager
 systemctl is-system-running            # running
 systemctl --user -M desktop@ status    # real user manager
 ```
@@ -98,7 +99,7 @@ EOF
 systemctl reload caddy
 ```
 
-KasmVNC's WebSocket upgrade is forwarded by Caddy without extra configuration.
+nginx already handles the WebSocket upgrade; Caddy forwards it unchanged.
 With nginx add `proxy_set_header Upgrade $http_upgrade;` and
 `proxy_set_header Connection "upgrade";`.
 
@@ -111,15 +112,15 @@ systemctl stop cloud-desktop.target      # stop everything
 journalctl -u control -f                 # follow one unit
 ```
 
-Credentials live in `/etc/cloud-desktop/desktop.env` (KasmVNC user and
-resolution) and `/home/desktop/.kasmpasswd` (hashed password). To change the
-VNC password, rerun the credential step:
+Credentials live in /etc/cloud-desktop/desktop.env (VNC user and
+resolution) and /etc/nginx/.htpasswd (apr1 hash of the password). To
+change it, rebuild the entry with openssl passwd -apr1:
 
 ```bash
 read -rsp 'New VNC password: ' P; echo
-printf '%s\n%s\n' "$P" "$P" | runuser -u desktop -- env HOME=/home/desktop \
-    vncpasswd -u admin -w
-systemctl restart kasmvnc
+printf "%s:%s\n" "${VNC_USER:-admin}" "$(openssl passwd -apr1 "$P")" \> /etc/nginx/.htpasswd
+chmod 640 /etc/nginx/.htpasswd && chown root:www-data /etc/nginx/.htpasswd
+systemctl reload nginx
 ```
 
 ## Updating
@@ -130,7 +131,7 @@ cd ubuntu-systemd-desktop && git pull
 ```
 
 The installer keeps `/etc/cloud-desktop/desktop.env` and
-`/home/desktop/.kasmpasswd` unless you pass `VNC_PW` again.
+/etc/nginx/.htpasswd unless you pass VNC_PW again.
 
 ## Notes
 

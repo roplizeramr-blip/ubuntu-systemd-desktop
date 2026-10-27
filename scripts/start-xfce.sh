@@ -26,8 +26,8 @@ unset SESSION_MANAGER
 # (systemd --user) or by the container's user-dbus program.
 export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
 
-# KasmVNC starts this unit shortly after the X server; allow Xvnc a few seconds
-# to create the display socket instead of burning restart attempts.
+# Supervisor starts this program shortly after TigerVNC; allow the X server a
+# few seconds to create the display socket instead of burning restart attempts.
 for _ in $(seq 1 150); do
     if xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
         break
