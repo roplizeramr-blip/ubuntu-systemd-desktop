@@ -6,8 +6,8 @@
       <stop offset="1" stop-color="#13284d"/>
     </linearGradient>
     <radialGradient id="glow" cx="0.55" cy="0.35" r="0.7">
-      <stop offset="0" stop-color="#2b6cb0" stop-opacity="0.38"/>
-      <stop offset="1" stop-color="#2b6cb0" stop-opacity="0"/>
+      <stop offset="0" stop-color="#e95420" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="#e95420" stop-opacity="0"/>
     </radialGradient>
     <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
       <path d="M 48 0 L 0 0 0 48" fill="none" stroke="#7aa2f7" stroke-opacity="0.07" stroke-width="1"/>
@@ -18,20 +18,20 @@
   <rect width="1920" height="1080" fill="url(#grid)"/>
 
   <g transform="translate(120, 150)">
-    <text x="0" y="0" fill="#e6edf7" font-family="DejaVu Sans, sans-serif" font-size="76" font-weight="700">Debian Cloud Desktop</text>
-    <text x="4" y="62" fill="#8aa4c8" font-family="DejaVu Sans, sans-serif" font-size="27">XFCE · Chrome · noVNC · systemd-compatible</text>
-    <rect x="4" y="100" width="620" height="3" rx="1.5" fill="#3b82f6" opacity="0.8"/>
+    <text x="0" y="0" fill="#e6edf7" font-family="DejaVu Sans, sans-serif" font-size="76" font-weight="700">Ubuntu Cloud Desktop</text>
+    <text x="4" y="62" fill="#8aa4c8" font-family="DejaVu Sans, sans-serif" font-size="27">XFCE Â· Chrome Â· noVNC Â· systemd-compatible</text>
+    <rect x="4" y="100" width="620" height="3" rx="1.5" fill="#e95420" opacity="0.85"/>
   </g>
 
   <g transform="translate(1270, 170)" opacity="0.95">
-    <circle cx="190" cy="190" r="190" fill="none" stroke="#3b82f6" stroke-opacity="0.22" stroke-width="2"/>
-    <circle cx="190" cy="190" r="140" fill="none" stroke="#60a5fa" stroke-opacity="0.28" stroke-width="2"/>
-    <circle cx="190" cy="190" r="92" fill="#0b1628" stroke="#93c5fd" stroke-opacity="0.55" stroke-width="2"/>
-    <path d="M 190 98 L 190 282 M 98 190 L 282 190" stroke="#60a5fa" stroke-opacity="0.28" stroke-width="2"/>
-    <circle cx="190" cy="98" r="7" fill="#93c5fd"/>
-    <circle cx="282" cy="190" r="7" fill="#93c5fd"/>
-    <circle cx="190" cy="282" r="7" fill="#93c5fd"/>
-    <circle cx="98" cy="190" r="7" fill="#93c5fd"/>
+    <circle cx="190" cy="190" r="190" fill="none" stroke="#e95420" stroke-opacity="0.22" stroke-width="2"/>
+    <circle cx="190" cy="140" r="140" fill="none" stroke="#f6a05a" stroke-opacity="0.28" stroke-width="2"/>
+    <circle cx="190" cy="92" r="92" fill="#0b1628" stroke="#f6a05a" stroke-opacity="0.55" stroke-width="2"/>
+    <path d="M 190 98 L 190 282 M 98 190 L 282 190" stroke="#f6a05a" stroke-opacity="0.28" stroke-width="2"/>
+    <circle cx="190" cy="98" r="7" fill="#f6a05a"/>
+    <circle cx="282" cy="190" r="7" fill="#f6a05a"/>
+    <circle cx="190" cy="282" r="7" fill="#f6a05a"/>
+    <circle cx="98" cy="190" r="7" fill="#f6a05a"/>
     <text x="190" y="202" text-anchor="middle" fill="#dbeafe" font-family="DejaVu Sans Mono, monospace" font-size="30">$ _</text>
   </g>
 
@@ -42,10 +42,10 @@
     <circle cx="52" cy="19" r="6" fill="#ffbd2e"/>
     <circle cx="74" cy="19" r="6" fill="#27c93f"/>
     <text x="30" y="82" fill="#9ece6a" font-family="DejaVu Sans Mono, monospace" font-size="21">admin@ubuntu:~$ supervisorctl status</text>
-    <text x="30" y="116" fill="#7aa2f7" font-family="DejaVu Sans Mono, monospace" font-size="21">? service layer: active (running)</text>
-    <text x="30" y="150" fill="#bb9af7" font-family="DejaVu Sans Mono, monospace" font-size="21">? Chrome · XFCE · noVNC · D-Bus</text>
+    <text x="30" y="116" fill="#7aa2f7" font-family="DejaVu Sans Mono, monospace" font-size="21">â— service layer: active (running)</text>
+    <text x="30" y="150" fill="#bb9af7" font-family="DejaVu Sans Mono, monospace" font-size="21">â— Chrome Â· XFCE Â· noVNC Â· D-Bus</text>
     <text x="30" y="184" fill="#e0af68" font-family="DejaVu Sans Mono, monospace" font-size="21">admin@ubuntu:~$ _</text>
   </g>
 
-  <text x="120" y="1030" fill="#597699" font-family="DejaVu Sans, sans-serif" font-size="18">Lightweight cloud workstation · built for CranL</text>
+  <text x="120" y="1030" fill="#597699" font-family="DejaVu Sans, sans-serif" font-size="18">Lightweight cloud workstation Â· built for CranL</text>
 </svg>
